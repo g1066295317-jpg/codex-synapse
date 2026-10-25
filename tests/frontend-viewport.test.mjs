@@ -38,6 +38,11 @@ test('fork selection preserves the user camera; only explicit fit changes zoom',
   const child=page.locator('.react-flow__node[data-id="camera-child_child-2"]');
   const parent=page.locator('.react-flow__node[data-id="camera-parent_parent-2"]');
   await child.locator('.node-heading > span').click();await page.waitForFunction(()=>document.querySelector('.map-title strong')?.textContent==='对照分支');await page.waitForTimeout(250);
+  assert.equal(await page.getByRole('complementary',{name:'问答详情'}).count(),1,'one node click must open full detail');
+  assert.ok((await page.locator('.detail-pane .question-text').textContent()).includes('分支问题'));
+  await page.getByRole('button',{name:'关闭详情',exact:true}).click();
+  await parent.locator('.node-heading > span').click();
+  assert.ok((await page.locator('.detail-pane .question-text').textContent()).includes('主线问题'),'another node click must reopen and switch full detail');
   const afterChild=await viewport(page);measurements.push({action:'select-fork-node',before:initial,after:afterChild});sameView(initial,afterChild);
   await parent.locator('.node-heading > span').click();await page.waitForTimeout(250);sameView(initial,await viewport(page));
   await page.getByRole('button',{name:'对照分支',exact:true}).click();await page.waitForTimeout(300);sameView(initial,await viewport(page));
