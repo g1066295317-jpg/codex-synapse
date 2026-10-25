@@ -6,6 +6,7 @@ import {CodexRpc} from './codex-rpc.mjs';
 import {LayoutStore} from './layout-store.mjs';
 import {SessionService} from './session-service.mjs';
 import {WorkspaceService} from './workspace-service.mjs';
+import {releaseForNative} from './native-handoff.mjs';
 
 const id=z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/);
 const cursor=z.string().min(1).max(4096).optional();
@@ -37,6 +38,7 @@ function validateLayout(patch){
 
 // The host transports only this small tool allowlist. Never expose rpc.call to a renderer.
 export class NativeBackend extends EventEmitter {
+  activeCalls=new Set();handingOff=false;
   constructor({rpc,store,dataDirectory,rpcOptions}={}){
     super();this.rpc=rpc??new CodexRpc(rpcOptions);this.store=store??new LayoutStore(dataDirectory??process.env.SYNAPSE_DATA??join(process.env.LOCALAPPDATA||join(homedir(),'.local','share'),'CodexSynapse'));
     this.service=new SessionService(this.rpc,this.store);this.workspace=new WorkspaceService(this.service);this.closed=false;
@@ -46,6 +48,17 @@ export class NativeBackend extends EventEmitter {
     this.rpc.on('notification',this.forwardNotification);this.rpc.on('approval',this.forwardApproval);this.rpc.on('unsupportedRequest',this.forwardUnsupported);
   }
   async call(name,args={}){
+    if(this.handingOff)throw new Error('正在返回原生聊天，请稍候');
+    const running=this.dispatch(name,args);this.activeCalls.add(running);
+    try{return await running;}finally{this.activeCalls.delete(running);}
+  }
+  async withNativeHandoff(id,navigate){
+    if(this.closed||this.handingOff)throw new Error('正在切换会话，请稍候');
+    this.handingOff=true;
+    try{await Promise.allSettled([...this.activeCalls]);const result=await releaseForNative(this.rpc,this.workspace,id);return await navigate(result);}
+    finally{this.handingOff=false;}
+  }
+  async dispatch(name,args={}){
     if(this.closed)throw new Error('工作台已关闭');
     if(typeof name!=='string')throw new Error('无效工具名称');
     const method=Object.hasOwn(aliases,name)?aliases[name]:name;

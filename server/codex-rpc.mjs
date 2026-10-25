@@ -53,6 +53,17 @@ export class CodexRpc extends EventEmitter {
     });
   }
   listApprovals(id){return this.approvals.list(id);}
+  get connected(){return !!this.process;}
+  async disconnectForHandoff(){
+    if(this.pending.size||this.approvals.list().length)throw new Error('画布连接仍有请求，未释放会话');
+    const child=this.process;if(!child)return;
+    const exited=new Promise(resolve=>child.once('exit',resolve));
+    // EOF asks this app-server child to exit cleanly; wait for the lock owner to
+    // actually exit before letting the native client retry its resume request.
+    this.process=null;this.ready=null;this.reader?.close();child.stdin.end();
+    const timeout=ms=>new Promise(resolve=>{const timer=setTimeout(()=>resolve(false),ms);exited.then(()=>{clearTimeout(timer);resolve(true);});});
+    if(!await timeout(2500)){if(!child.killed)child.kill();if(!await timeout(2500))throw new Error('画布会话服务尚未退出，请稍后重试');}
+  }
   respondApproval(args){return this.approvals.respond(args);}
   fail(error){for(const p of this.pending.values()){clearTimeout(p.timer);p.reject(error);}this.pending.clear();this.approvals.clear();}
   close(){
