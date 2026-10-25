@@ -7,6 +7,7 @@ import ApprovalPanel from './ApprovalPanel.jsx';
 import CanvasScrollbars from './CanvasScrollbars.jsx';
 import {turnGraph, descendants, titleOf} from './turn-graph.mjs';
 import {groupThreads, isRunning, mergeHistory, mergeThreads, normalizeDraft, questionTarget} from './native-state.mjs';
+import {installNativeSidebar} from '../runtime/native-sidebar.mjs';
 
 const nodeTypes = {turn: TurnNode};
 const emptySnapshot = {threads: [], histories: {}, layout: {nodes: {}, branches: {}, view: {}}};
@@ -57,6 +58,10 @@ export default function NativeWorkspace({host}) {
   const generating = !!runningTurn && !draft.branch && !newTopic;
   const groups = useMemo(() => groupThreads(snapshot.threads, query), [snapshot.threads, query]);
   state.current = {selected, activeKey, snapshot, graph, draft, draftKey, drafts, folded, rootDraft, context, canSave, readOnly};
+
+  useEffect(() => {
+    if(!context.testing && hydrated.current)installNativeSidebar()?.update(snapshot.layout.branches);
+  }, [snapshot.layout.branches, context.testing]);
 
   const fail = useCallback(failure => {if (mounted.current) setError(failure?.message || String(failure));}, []);
   const call = useCallback((name, args = {}) => Promise.resolve().then(() => host.call(name, args)), [host]);
@@ -149,6 +154,7 @@ export default function NativeWorkspace({host}) {
     update();
     const timer = setInterval(() => {if (!document.hidden) update();}, 1800);
     const unsubscribe = host.onEvent?.(event => {
+      if(event?.kind==='native_handoff_error'){fail(new Error(event.message));return;}
       const id = event?.params?.threadId || event?.threadId;
       if (!id || id === selected) {clearTimeout(eventTimer); eventTimer = setTimeout(update, 120);}
     });
@@ -173,7 +179,7 @@ export default function NativeWorkspace({host}) {
     host.setActiveThread?.(id); save({view: {selectedId: id, activeId: null}}); refresh(id);
   }, [host, save, refresh]);
 
-  const chooseNode = useCallback((key, sourceId, showDetail = false) => {
+  const chooseNode = useCallback((key, sourceId, showDetail = true) => {
     const current = state.current;
     const id = (current.graph.paths[current.selected] || []).includes(key) ? current.selected : sourceId;
     setSelected(id); setActive(key); setNewTopic(false);
