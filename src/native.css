@@ -1,0 +1,236 @@
+.synapse-native-root {
+  --synapse-bg: #f7f6f2;
+  --synapse-panel: #fdfcf9;
+  --synapse-line: #e6e3dc;
+  --synapse-muted: #8a8880;
+  --synapse-text: #343a35;
+  --synapse-accent: #607364;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  container-type: inline-size;
+  color-scheme: light;
+  font: 13px/1.55 'Segoe UI Variable Text', 'Microsoft YaHei UI', sans-serif;
+  color: var(--synapse-text);
+  background: var(--synapse-bg);
+  text-align: left;
+  letter-spacing: normal;
+}
+.synapse-native-root *, .synapse-native-root *::before, .synapse-native-root *::after {box-sizing: border-box;}
+.synapse-native-root :where(button, input, textarea, select) {font: inherit; color: inherit; letter-spacing: inherit;}
+.synapse-native-root button {display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid transparent; border-radius: 7px; padding: 6px 9px; margin: 0; background: transparent; cursor: pointer; line-height: 1.4; white-space: nowrap; appearance: none;}
+.synapse-native-root button:hover:not(:disabled) {background: #eeede7;}
+.synapse-native-root button:disabled {opacity: .42; cursor: default;}
+.synapse-native-root :where(button, input, textarea):focus-visible {outline: 2px solid #7d9681; outline-offset: 2px;}
+.synapse-native-root :where(input, textarea) {min-width: 0; border: none; border-radius: 0; background: transparent; outline: none; box-shadow: none;}
+.synapse-native-root :where(input, textarea)::placeholder {color: #a19e95;}
+.synapse-native-root textarea {resize: vertical;}
+.synapse-native-root :where(h1, h2, h3, p) {margin: 0;}
+.synapse-native-root svg {flex-shrink: 0;}
+.synapse-native-root .icon-button {padding: 5px; width: 28px; height: 28px; flex-shrink: 0; color: #85877d;}
+.synapse-native-root .synapse-workspace {height: 100%; min-height: 0; display: flex; overflow: hidden; position: relative;}
+.synapse-native-root .sessions {width: 221px; min-width: 221px; display: flex; flex-direction: column; border-right: 1px solid var(--synapse-line); background: #f3f2ed; padding: 15px 11px 0;}
+.synapse-native-root .sidebar-heading {display: flex; align-items: center; justify-content: space-between; margin: 0 1px 15px 6px;}
+.synapse-native-root .sidebar-heading > span {display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; letter-spacing: .3px;}
+.synapse-native-root .sidebar-heading svg {color: #718371;}
+.synapse-native-root .session-search {height: 33px; border: 1px solid #e2dfd6; border-radius: 7px; background: #faf9f5; display: flex; gap: 7px; align-items: center; padding: 0 9px; color: #8e8d83;}
+.synapse-native-root .session-search input {width: 100%; font-size: 12px;}
+.synapse-native-root .session-search .icon-button {width: 19px; padding: 1px;}
+.synapse-native-root .new-topic {justify-content: flex-start; margin: 10px 0 17px; padding: 7px 8px; color: #687565; font-size: 12px; border: 1px dashed #d4d6ca;}
+.synapse-native-root .session-groups {flex: 1; min-height: 0; overflow-y: auto; margin: 0 -5px; padding: 0 5px 16px; scrollbar-width: thin;}
+.synapse-native-root .session-group {margin-bottom: 18px;}
+.synapse-native-root .group-heading {width: 100%; justify-content: flex-start; padding: 4px 4px 7px; color: #8a897e; font-size: 10px; font-weight: 500;}
+.synapse-native-root .group-heading > span {overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}
+.synapse-native-root .group-heading > small {margin-left: auto; font-size: 10px; font-variant-numeric: tabular-nums;}
+.synapse-native-root .session {width: 100%; justify-content: flex-start; text-align: left; padding: 9px 9px; font-size: 12px; gap: 8px; color: #6f7269; margin: 1px 0;}
+.synapse-native-root .session > span:nth-child(2) {overflow: hidden; white-space: nowrap; text-overflow: ellipsis;}
+.synapse-native-root .session.current {background: #e6e9df; color: #3a4a3c; font-weight: 500;}
+.synapse-native-root .session-symbol {display: flex; align-items: center; justify-content: center; width: 14px; flex-shrink: 0; color: #b09b81;}
+.synapse-native-root .session-dot {width: 5px; height: 5px; border: 1px solid #b5b8a7; border-radius: 100%;}
+.synapse-native-root .selected-indicator {margin-left: auto; min-width: 4px; height: 4px; border-radius: 100%; background: #72816b;}
+.synapse-native-root .more-sessions {width: 100%; font-size: 11px; color: #87877a; border: 1px solid #e0ded4;}
+.synapse-native-root .sidebar-foot {border-top: 1px solid var(--synapse-line); min-height: 39px; display: flex; align-items: center; gap: 6px; color: #8b8b7e; font-size: 10px;}
+.synapse-native-root .sidebar-foot > span {margin-left: auto;}
+.synapse-native-root .connection-dot, .synapse-native-root .test-dot {width: 5px; height: 5px; border-radius: 100%; background: #8d9c83;}
+.synapse-native-root .test-dot {background: #b49b6e;}
+.synapse-native-root .empty-list {padding: 20px 8px; text-align: center; color: var(--synapse-muted); font-size: 12px;}
+.synapse-native-root .map-main {display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0;}
+.synapse-native-root .map-toolbar {min-height: 67px; padding: 12px 19px; display: flex; justify-content: space-between; align-items: center; gap: 12px; background: var(--synapse-panel); border-bottom: 1px solid var(--synapse-line); z-index: 2;}
+.synapse-native-root .map-title {display: flex; align-items: center; gap: 9px; min-width: 0;}
+.synapse-native-root .map-title > div {display: flex; flex-direction: column; min-width: 0;}
+.synapse-native-root .map-title strong {font-size: 14px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;}
+.synapse-native-root .map-title span {font-size: 10px; color: #969489; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}
+.synapse-native-root .toolbar-actions {display: flex; gap: 4px; align-items: center; flex-shrink: 0;}
+.synapse-native-root .toolbar-actions button {font-size: 11px;}
+.synapse-native-root .detail-toggle {margin-left: 6px; color: #7b8074;}
+.synapse-native-root .detail-toggle.active {background: #e9ece2; color: #586c56;}
+.synapse-native-root .native-link {color: #767a6e; margin-left: 3px;}
+.synapse-native-root .canvas-view {flex: 1; position: relative; min-height: 0; background: var(--synapse-bg);}
+.synapse-native-root .canvas-note {position: absolute; bottom: 19px; left: 58px; pointer-events: none; display: flex; align-items: center; gap: 6px; font-size: 10px; color: #9b978a; background: rgba(247,246,242,.87); padding: 4px 8px; border-radius: 5px;}
+.synapse-native-root .path-legend, .synapse-native-root .branch-legend {display: inline-block; height: 2px; width: 15px; background: #6f8273;}
+.synapse-native-root .branch-legend {background: #b4865a; margin-left: 9px;}
+.synapse-native-root .workspace-foot {min-height: 30px; border-top: 1px solid var(--synapse-line); padding: 0 16px; display: flex; justify-content: space-between; gap: 12px; align-items: center; color: #a09c8f; font-size: 9px; background: #faf9f6;}
+.synapse-native-root .workspace-foot > span {display: flex; gap: 5px; align-items: center; white-space: nowrap;}
+.synapse-native-root .turn-card {width: 370px; border: 1px solid #deddd4; border-radius: 11px; background: #fffefa; box-shadow: 0 3px 11px #4a493209; overflow: hidden; cursor: default; transition: border-color .14s, box-shadow .14s;}
+.synapse-native-root .turn-card.on-path {border-color: #c7cec0;}
+.synapse-native-root .turn-card.selected {border-color: #8b9a82; box-shadow: 0 0 0 2px #a9b69e2b, 0 5px 15px #4a493210;}
+.synapse-native-root .turn-card {display:flex;flex-direction:column;max-height:440px;}
+.synapse-native-root .turn-card > .node-heading, .synapse-native-root .turn-card > .question-text, .synapse-native-root .turn-card > .node-actions, .synapse-native-root .turn-card > .folded-hint {flex-shrink:0;}
+.synapse-native-root .turn-card > .answer-text {min-height:0;overflow:hidden;flex-shrink:1;}
+.synapse-native-root .node-heading {display: flex; align-items: center; height: 39px; gap: 8px; padding: 0 12px 0 16px; border-bottom: 1px solid #eeece5; background: #faf9f4;}
+.synapse-native-root .node-heading > span {display: flex; align-items: center; gap: 7px; font-size: 10px; color: #6c7866; font-weight: 600; white-space: nowrap;}
+.synapse-native-root .node-heading small {font-size: 9px; color: #a19d8f; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; flex: 1; text-align: right;}
+.synapse-native-root .dot, .synapse-native-root .live-dot {width: 5px; height: 5px; border-radius: 100%; background: #97a28e;}
+.synapse-native-root .live-dot {background: #9eaa7d; animation: synapse-pulse 1.8s infinite;}
+.synapse-native-root .speaker {display: flex; align-items: center; gap: 8px; font-size: 9px; font-weight: 600; letter-spacing: .4px; color: #919283; margin-bottom: 5px;}
+.synapse-native-root .question-text {padding: 15px 18px 13px; background: #f9f8f2; border-bottom: 1px solid #eeece5;}
+.synapse-native-root .question-text p {white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.65;}
+.synapse-native-root .turn-card .question-text p {max-height: 79px; overflow: hidden;}
+.synapse-native-root .answer-text {padding: 15px 18px 16px; font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; user-select: text; cursor: text;}
+.synapse-native-root .answer-preview {white-space: pre-wrap; max-height: 170px; overflow: hidden; color: #646b5e;}
+.synapse-native-root .canvas-scrollbars {position:absolute;inset:0;z-index:6;pointer-events:none;}
+.synapse-native-root .canvas-scroll-axis {position:absolute;box-sizing:border-box;padding:3px;background:#efeee8;pointer-events:auto;touch-action:none;user-select:none;outline-offset:-2px;}
+.synapse-native-root .canvas-scroll-x {left:0;right:16px;bottom:0;height:16px;border-top:1px solid #e1ded5;}
+.synapse-native-root .canvas-scroll-y {right:0;top:0;bottom:16px;width:16px;border-left:1px solid #e1ded5;}
+.synapse-native-root .canvas-scroll-rail {position:relative;width:100%;height:100%;}
+.synapse-native-root .canvas-scroll-thumb {position:absolute;left:0;top:0;border-radius:6px;background:#b1b2a7;cursor:grab;}
+.synapse-native-root .canvas-scroll-x .canvas-scroll-thumb {height:100%;}
+.synapse-native-root .canvas-scroll-y .canvas-scroll-thumb {width:100%;}
+.synapse-native-root .canvas-scroll-axis:hover .canvas-scroll-thumb {background:#8d9885;}
+.synapse-native-root .canvas-scroll-axis:active .canvas-scroll-thumb {background:#74856d;cursor:grabbing;}
+.synapse-native-root .canvas-scroll-axis[aria-disabled=true] {opacity:.45;}
+.synapse-native-root .canvas-scroll-corner {position:absolute;bottom:0;right:0;width:16px;height:16px;background:#efeee8;}
+.synapse-native-root .question-preview .math-markdown {max-height: 90px;overflow: hidden;}
+.synapse-native-root .math-markdown {min-width:0;white-space:normal;}
+.synapse-native-root .math-markdown .katex-display {overflow-x:auto;overflow-y:hidden;max-width:100%;padding:4px 0 7px;margin:12px 0;}
+.synapse-native-root .math-markdown .katex {white-space:normal;font-size:1.1em;}
+.synapse-native-root .math-markdown .katex-display>.katex {white-space:nowrap;}
+.synapse-native-root .math-markdown .katex-error {white-space:pre-wrap;overflow-wrap:anywhere;}
+.synapse-native-root .answer-live {font-weight: 400; letter-spacing: 0; color: #a39a75; font-size: 9px;}
+.synapse-native-root .answer-text > :last-child {margin-bottom: 0;}
+.synapse-native-root .answer-text :where(p, ul, ol, pre, blockquote, table) {margin: 0 0 13px;}
+.synapse-native-root .answer-text :where(ul, ol) {padding-left: 21px;}
+.synapse-native-root .answer-text :where(h1, h2, h3, h4) {font-size: 14px; margin: 19px 0 8px; line-height: 1.5; font-weight: 600;}
+.synapse-native-root .answer-text h1 {font-size: 18px;}
+.synapse-native-root .answer-text h2 {font-size: 16px;}
+.synapse-native-root .answer-text a {color: #6c856c; text-decoration: underline; text-underline-offset: 3px;}
+.synapse-native-root .answer-text code {font-family: 'Cascadia Code', Consolas, monospace; font-size: .92em; background: #efeee7; padding: 1px 4px; border-radius: 3px;}
+.synapse-native-root .answer-text pre {padding: 12px; background: #f0efe8; border: 1px solid #e8e5dc; border-radius: 6px; overflow-x: auto; line-height: 1.6; white-space: pre;}
+.synapse-native-root .answer-text pre code {padding: 0; background: transparent;}
+.synapse-native-root .answer-text blockquote {border-left: 2px solid #b9c3ad; padding-left: 12px; color: #8a8c7d;}
+.synapse-native-root .answer-text table {border-collapse: collapse; display: block; overflow: auto;}
+.synapse-native-root .answer-text :where(td, th) {border: 1px solid #e2e0d7; padding: 6px 9px;}
+.synapse-native-root .answer-text img {max-width: 100%; height: auto;}
+.synapse-native-root .answer-text hr {border: 0; border-top: 1px solid var(--synapse-line); margin: 19px 0;}
+.synapse-native-root .node-actions {display: flex; align-items: center; border-top: 1px solid #eeece5; padding: 6px 10px; gap: 2px;}
+.synapse-native-root .node-actions button {font-size: 10px; color: #858d7b; padding: 5px 7px;}
+.synapse-native-root .node-actions .icon-button:nth-last-child(2) {margin-left: auto;}
+.synapse-native-root .tool-details {font-size: 10px; color: #9a9788; border-top: 1px solid #eeece5; padding: 9px 17px; background: #faf9f5;}
+.synapse-native-root .tool-details summary {cursor: pointer; user-select: none;}
+.synapse-native-root .tool-details > div {margin-top: 11px;}
+.synapse-native-root .tool-details pre {font: 10px/1.6 Consolas, monospace; max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 5px 0;}
+.synapse-native-root .turn-card .tool-details {max-height: 130px; overflow: auto;}
+.synapse-native-root .folded-hint {display: block; text-align: center; font-size: 9px; color: #ab9b7f; border-top: 1px dashed #e8e3d7; padding: 6px; background: #faf8f1;}
+.synapse-native-root .detail-pane {width: 377px; min-width: 320px; max-width: 47%; display: flex; flex-direction: column; border-left: 1px solid var(--synapse-line); background: var(--synapse-panel); min-height: 0; z-index: 5; box-shadow: -3px 0 11px #49462c03;}
+.synapse-native-root .detail-heading {display: flex; align-items: center; justify-content: space-between; min-height: 67px; padding: 13px 16px 13px 22px; border-bottom: 1px solid var(--synapse-line);}
+.synapse-native-root .detail-heading > div {display: flex; flex-direction: column; min-width: 0;}
+.synapse-native-root .detail-heading span {font-size: 13px; font-weight: 600; color: #5e705b;}
+.synapse-native-root .detail-heading small {font-size: 9px; color: #a09b8d; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; margin-top: 2px;}
+.synapse-native-root .detail-scroll {overflow-y: auto; flex: 1; min-height: 0; scrollbar-width: thin;}
+.synapse-native-root .detail-scroll > .question-text {padding: 21px 23px;}
+.synapse-native-root .detail-scroll > .answer-text {padding: 24px 23px; font-size: 13px; line-height: 1.9;}
+.synapse-native-root .detail-scroll > .tool-details {padding: 12px 23px;}
+.synapse-native-root .turn-pagination {display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--synapse-line); padding: 7px 15px; color: #969382;}
+.synapse-native-root .turn-pagination button {font-size: 10px;}
+.synapse-native-root .turn-pagination span {font-size: 9px; font-variant-numeric: tabular-nums;}
+.synapse-native-root .detail-composer {padding: 9px 15px 13px; background: #f9f8f4; border-top: 1px solid var(--synapse-line);}
+.synapse-native-root .composer {border: 1px solid #deded3; border-radius: 9px; background: #fffefa; padding: 8px 10px 6px; overflow: hidden;}
+.synapse-native-root .composer:focus-within {border-color: #a7b09a; box-shadow: 0 0 0 2px #b5bfa71b;}
+.synapse-native-root .composer .question-input {display: block; width: 100%; resize: none; min-height: 67px; max-height: 175px; line-height: 1.7; padding: 3px 1px 9px; font-size: 12px; outline: none;}
+.synapse-native-root .composer-bottom {display: flex; align-items: center; justify-content: space-between; gap: 8px;}
+.synapse-native-root .composer .branch-mode {font-size: 10px; padding: 4px 5px; color: #92927f; margin-left: -4px;}
+.synapse-native-root .composer .branch-mode.active {color: #a38b62; background: #f4efe4;}
+.synapse-native-root .composer .branch-mode:disabled {opacity: .85;}
+.synapse-native-root .composer .send {background: #73826a; color: #fff; width: 28px; height: 28px; border-radius: 7px; padding: 5px; flex-shrink: 0;}
+.synapse-native-root .composer .send:hover:not(:disabled) {background: #5e7357;}
+.synapse-native-root .composer .send.stop {background: #a09170;}
+.synapse-native-root .composer-hint {font-size: 9px; color: #b2ac9b; padding-top: 5px;}
+.synapse-native-root .new-topic-label {font-size: 10px; color: #92927f;}
+.synapse-native-root .quoted-draft {border-left: 2px solid #c2bc9c; background: #f6f3e9; padding: 5px 8px; border-radius: 3px; margin-bottom: 8px;}
+.synapse-native-root .quoted-draft > div {display: flex; align-items: center; justify-content: space-between; font-size: 9px; color: #a69b7b;}
+.synapse-native-root .quoted-draft button {padding: 0 1px;}
+.synapse-native-root .quoted-draft textarea {width: 100%; padding: 3px 0; resize: vertical; max-height: 130px; color: #8e856b; font-size: 10px; line-height: 1.65;}
+.synapse-native-root .empty-canvas {position: absolute; top: 44%; left: 50%; transform: translate(-50%, -50%); width: min(300px, 80%); display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; color: #aca994; pointer-events: none;}
+.synapse-native-root .empty-canvas strong {font-size: 15px; font-weight: 500; color: #7e8875;}
+.synapse-native-root .empty-canvas p {font-size: 11px; line-height: 1.9;}
+.synapse-native-root .new-topic-intro {padding: 70px 27px; color: #9da18c;}
+.synapse-native-root .new-topic-intro h2 {font-size: 17px; font-weight: 500; color: #72806a; margin: 15px 0 12px;}
+.synapse-native-root .new-topic-intro p {font-size: 12px; line-height: 1.9;}
+.synapse-native-root .reader-empty {padding: 35px 20px; color: #aaa38e; text-align: center;}
+.synapse-native-root .load-older {display: flex; margin: 13px auto; color: #9b9c86; font-size: 10px; border: 1px solid #e5e1d4;}
+.synapse-native-root .error-banner, .synapse-native-root .status-warning {display: flex; align-items: center; gap: 10px; justify-content: space-between; background: #f9eee6; color: #aa7053; border-bottom: 1px solid #ecd8c8; padding: 8px 16px; font-size: 11px; overflow-wrap: anywhere;}
+.synapse-native-root .status-warning {background: #f6f2e4; color: #9e8c5c; border-color: #e9e1ca;}
+.synapse-native-root .status-warning button {font-size: 10px; flex-shrink: 0;}
+.synapse-native-root .inline-error {color: #b37b5f; padding: 10px 18px; font-size: 11px;}
+.synapse-native-root .approvals {padding: 12px; border-bottom: 1px solid #e7ddc8; background: #f7f4e9;}
+.synapse-native-root .approval-card {border: 1px solid #e2d6bb; background: #fffdf6; border-radius: 8px; padding: 13px; margin-bottom: 10px; font-size: 11px;}
+.synapse-native-root .approval-card:last-child {margin-bottom: 0;}
+.synapse-native-root .approval-title {display: flex; align-items: center; gap: 6px; color: #a48d5b; margin-bottom: 8px;}
+.synapse-native-root .approval-title strong {font-weight: 500;}
+.synapse-native-root .approval-card p {margin-bottom: 9px; line-height: 1.7;}
+.synapse-native-root .approval-card pre {font: 10px/1.6 Consolas, monospace; overflow: auto; max-height: 180px; padding: 8px; background: #f3f0e6; border-radius: 4px; white-space: pre-wrap; overflow-wrap: anywhere;}
+.synapse-native-root .approval-cwd {display: block; font-size: 9px; color: #a49b81; overflow-wrap: anywhere; margin-bottom: 10px;}
+.synapse-native-root .approval-card details {margin: 9px 0; color: #a49b81;}
+.synapse-native-root .approval-card summary {cursor: pointer;}
+.synapse-native-root .approval-card fieldset {padding: 10px 0; border: 0; border-top: 1px solid #eee8d9; margin: 9px 0; min-width: 0;}
+.synapse-native-root .approval-card legend {padding: 0 5px 0 0; font-size: 11px; font-weight: 500; color: #8f8467;}
+.synapse-native-root .approval-option {display: flex; align-items: flex-start; gap: 7px; padding: 6px 0; cursor: pointer;}
+.synapse-native-root .approval-option input {accent-color: #8e9d7d; margin: 3px 0 0;}
+.synapse-native-root .approval-option small {display: block; color: #a49d8a; font-size: 10px; margin-top: 2px;}
+.synapse-native-root .approval-input {border: 1px solid #ded7c4; border-radius: 5px; padding: 7px 9px; width: 100%; background: #fffefa;}
+.synapse-native-root .approval-actions {display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px;}
+.synapse-native-root .approval-actions button {border: 1px solid #e3dfd0; font-size: 10px; background: #faf8f0;}
+.synapse-native-root .approval-actions .primary-button {background: #8a977b; color: #fff; border-color: #8a977b;}
+.synapse-native-root .approval-actions .text-button {border-color: transparent; color: #a69b80; background: transparent;}
+.synapse-native-root .approval-badge {position: absolute; top: 16px; right: 17px; border: 1px solid #ded4ba; background: #f9f4e6; color: #a48d5b; box-shadow: 0 2px 8px #6253300d; font-size: 11px;}
+.synapse-native-root .react-flow__handle {width: 5px; height: 5px; border: 1px solid #fffefa; background: #a7b09b;}
+.synapse-native-root .react-flow__attribution {display: none;}
+.synapse-native-root .react-flow__controls {box-shadow: 0 2px 7px #49452f0c; border: 1px solid #e0ded4; border-radius: 7px; overflow: hidden; bottom: 26px; left: 8px;}
+.synapse-native-root .react-flow__controls-button {border-radius: 0; border: 0; border-bottom: 1px solid #e8e5db; background: #fcfbf7; color: #939582; padding: 7px; width: 28px; height: 28px;}
+.synapse-native-root .react-flow__controls-button svg {max-width: 13px; max-height: 13px; fill: currentColor;}
+.synapse-native-root .react-flow__minimap {width: 125px; height: 86px; border: 1px solid #e7e3d7; border-radius: 7px; background: #fcfbf7; box-shadow: 0 2px 7px #49452f04; bottom: 26px; right: 24px; overflow: hidden;}
+.synapse-native-root .canvas-note {bottom:24px;}
+.synapse-native-root .spin {animation: synapse-spin 1.2s linear infinite;}
+@keyframes synapse-spin {to {transform: rotate(360deg);}}
+@keyframes synapse-pulse {50% {box-shadow: 0 0 0 3px #9eaa7d24;}}
+@container (max-width: 1100px) {
+  .synapse-native-root .sessions {width: 192px; min-width: 192px; padding-left: 8px; padding-right: 8px;}
+  .synapse-native-root .map-toolbar {padding-left: 13px; padding-right: 11px;}
+  .synapse-native-root .detail-pane {width: 345px; min-width: 300px;}
+  .synapse-native-root .toolbar-actions {gap: 1px;}
+  .synapse-native-root .detail-toggle {margin-left: 1px;}
+}
+@container (max-width: 850px) {
+  .synapse-native-root .sessions {position: absolute; left: 0; top: 0; bottom: 0; width: 225px; z-index: 30; box-shadow: 8px 0 24px #4b47291c;}
+  .synapse-native-root .detail-pane {position: absolute; right: 0; top: 0; bottom: 0; width: 390px; max-width: 100%; box-shadow: -8px 0 24px #4b47291c;}
+  .synapse-native-root .workspace-foot > span:last-child {font-size: 8px;}
+}
+@container (max-width: 550px) {
+  .synapse-native-root .map-toolbar {padding: 10px; min-height: 60px; gap: 4px;}
+  .synapse-native-root .map-title strong {font-size: 12px; max-width: 175px;}
+  .synapse-native-root .map-title span {font-size: 9px;}
+  .synapse-native-root .toolbar-actions .native-link {font-size: 0; gap: 0; padding: 5px;}
+  .synapse-native-root .toolbar-actions .detail-toggle {font-size: 0; gap: 0; padding: 5px;}
+  .synapse-native-root .detail-pane {width: 100%; min-width: 0;}
+  .synapse-native-root .react-flow__minimap {width: 90px; height: 65px;}
+  .synapse-native-root .canvas-note {font-size: 8px; left: 45px; bottom: 14px; gap: 4px;}
+  .synapse-native-root .workspace-foot {padding: 0 9px; min-height: 27px;}
+  .synapse-native-root .workspace-foot > span:last-child {display: none;}
+}
+@media (prefers-reduced-motion: reduce) {
+  .synapse-native-root .spin, .synapse-native-root .live-dot {animation: none;}
+  .synapse-native-root .turn-card {transition: none;}
+}
