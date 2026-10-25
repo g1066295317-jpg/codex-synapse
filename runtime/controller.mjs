@@ -8,6 +8,8 @@ import {randomBytes,createHash} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import {Cdp,discover} from './cdp.mjs';
 import {installNativeHost} from './native-host.mjs';
+import {installNativeSidebar} from './native-sidebar.mjs';
+import {nativeHandoffState} from './native-navigation.mjs';
 import {NativeBackend} from '../server/native-backend.mjs';
 import {DemoBackend} from './demo-backend.mjs';
 
@@ -36,9 +38,15 @@ const getBackend=()=>{
 async function navigate(client,contextId,id){
   if(typeof id!=='string'||!/^[\w-]{8,100}$/.test(id))throw new Error('无效的会话标识');
   if(options.demo)throw new Error('演示会话没有对应的原生聊天');
-  await client.evaluate(`window.dispatchEvent(new MessageEvent('message',{data:{type:'navigate-to-route',path:${JSON.stringify('/local/'+id)}}}))`,contextId);
-  for(let n=0;n<80;n++){if(await client.evaluate(`window.__codexSynapse?.host.getContext().threadId===${JSON.stringify(id)}`,contextId))return {opened:true};await delay(100);}
-  throw new Error('未能确认原生会话已打开，请从侧栏选择该会话');
+  const open=async()=>{
+    await client.evaluate(`window.dispatchEvent(new MessageEvent('message',{data:{type:'navigate-to-route',path:${JSON.stringify('/local/'+id)}}}))`,contextId);
+    for(let n=0;n<60;n++){
+      const state=await client.evaluate(`(${nativeHandoffState.toString()})(${JSON.stringify(id)},${n%5===0})`,contextId);
+      if(state.sameThread&&!state.locked)return{opened:true};await delay(150);
+    }
+    throw new Error('原生聊天仍被其他窗口占用，请在那里关闭该会话后重试');
+  };
+  return backend?backend.withNativeHandoff(id,open):open();
 }
 async function attach(target){
   const client=await Cdp.connect(target.webSocketDebuggerUrl),contexts=new Map();
@@ -71,9 +79,10 @@ async function attach(target){
   const tree=await client.call('Page.getFrameTree');entry.frameId=tree.frameTree.frame.id;
   client.on('Page.frameNavigated',({frame})=>{if(!frame.parentId)entry.frameId=frame.id;});
   await client.call('Runtime.addBinding',{name:binding});
-  const source=`(${installNativeHost.toString()})(${JSON.stringify({binding,channel,demo:!!options.demo,readOnly:!!options.readOnly})})`;
+  const source=`window.__codexSynapse?.uninstall();window.__codexSynapseSidebar?.uninstall();(${installNativeSidebar.toString()})(${JSON.stringify({demo:!!options.demo})});(${installNativeHost.toString()})(${JSON.stringify({binding,channel,demo:!!options.demo,readOnly:!!options.readOnly})})`;
   entry.script=(await client.call('Page.addScriptToEvaluateOnNewDocument',{source})).identifier;
   await client.evaluate(source);
+  if(options.initialCanvasMode==='canvas')await client.evaluate('window.__codexSynapse?.setMode("canvas")');
 }
 async function shutdown(){
   if(shuttingDown)return;shuttingDown=true;
@@ -87,14 +96,16 @@ async function shutdown(){
 const server=createServer(socket=>{let input='',handled=false;socket.setTimeout(1500,()=>socket.destroy());socket.on('error',()=>{});socket.on('data',bytes=>{if(handled)return;input+=bytes.toString();if(input==='activate\n'){handled=true;for(const {client}of clients.values())client.call('Page.bringToFront').catch(()=>{});socket.end('ok');}else if(input.length>24||input.includes('\n'))socket.destroy();});});
 try{await new Promise((resolveListen,reject)=>{server.once('error',reject);server.listen(pipe,resolveListen);});}catch(error){if(error.code==='EADDRINUSE'&&await signalExisting())process.exit(0);throw error;}
 try {
-await unlink(join(profile,'DevToolsActivePort')).catch(()=>{});
-app=spawn(options.executable,[`--user-data-dir=${profile}`,'--remote-debugging-port=0','--remote-debugging-address=127.0.0.1','--no-first-run'],{cwd:dirname(options.executable),env:{...process.env,CODEX_ELECTRON_USER_DATA_PATH:profile},windowsHide:false,stdio:'ignore'});
-app.on('error',()=>shutdown());
+if(!options.adoptExisting){
+ await unlink(join(profile,'DevToolsActivePort')).catch(()=>{});
+ app=spawn(options.executable,[`--user-data-dir=${profile}`,'--remote-debugging-port=0','--remote-debugging-address=127.0.0.1','--no-first-run'],{cwd:dirname(options.executable),env:{...process.env,CODEX_ELECTRON_USER_DATA_PATH:profile},windowsHide:false,stdio:'ignore'});
+ app.on('error',()=>shutdown());
+}else if(!Number.isInteger(options.existingAppPid)||!options.existingStartedAt)throw new Error('Existing enhanced window identity is required');
 let found;
 for(let n=0;n<160;n++){try{found=await discover(pathToFileURL(profile).href);if(found.targets.some(t=>t.type==='page'&&t.url==='app://-/index.html'))break;}catch{}await delay(250);}
 if(!found)throw new Error('Codex did not expose a local interface in time');
 browser=await Cdp.connect(found.browser);
-await writeFile(join(dataDirectory,'runtime-status.json'),JSON.stringify({pid:process.pid,appPid:app.pid,demo:!!options.demo,readOnly:!!options.readOnly,startedAt:new Date().toISOString()}));
+await writeFile(join(dataDirectory,'runtime-status.json'),JSON.stringify({pid:process.pid,appPid:app?.pid??options.existingAppPid,demo:!!options.demo,readOnly:!!options.readOnly,startedAt:options.adoptExisting?options.existingStartedAt:new Date().toISOString(),controllerStartedAt:new Date().toISOString()}));
 let polling=false,emptySince=null,discoveryFailures=0;
 const poll=async()=>{if(polling||shuttingDown)return;polling=true;try{const {targets}=await discover(pathToFileURL(profile).href);discoveryFailures=0;const pages=targets.filter(t=>t.type==='page'&&t.url==='app://-/index.html');for(const t of pages)if(!clients.has(t.id)){try{await attach(t);}catch{clients.get(t.id)?.client.close();clients.delete(t.id);}}if(!pages.length){emptySince??=Date.now();if(Date.now()-emptySince>15000)await shutdown();}else emptySince=null;}catch{if(++discoveryFailures>=3)await shutdown();}finally{polling=false;}};
 watcher=setInterval(poll,1000);await poll();

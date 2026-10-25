@@ -15,14 +15,18 @@ export function installNativeHost(config) {
     return ids.at(-1)||null;
   };
   let nativeThread=null;
-  const context=()=>({threadId:config.demo?null:nativeThread,testing:!!config.demo,readOnly:!!config.readOnly,canvasVisible:state.mode==='canvas'});
+  const context=()=>({threadId:config.demo?null:nativeThread,testing:!!config.demo,readOnly:!!config.readOnly,canvasVisible:state.mode==='canvas'&&!state.handingOff});
   const request=(name,args={})=>new Promise((resolve,reject)=>{
     if(disposed||pending.size>=128){reject(new Error('画布连接不可用'));return;}
     const id=++sequence,timer=setTimeout(()=>{pending.delete(id);reject(new Error('画布请求超时，请重试'));},65000);
     pending.set(id,{resolve,reject,timer});
     try{window[config.binding](JSON.stringify({channel:config.channel,id,name,args}));}catch{clearTimeout(timer);pending.delete(id);reject(new Error('画布连接已断开'));}
   });
-  const host={call:request,getContext:context,onContextChange:fn=>(contextListeners.add(fn),()=>contextListeners.delete(fn)),onEvent:fn=>(eventListeners.add(fn),()=>eventListeners.delete(fn)),setActiveThread:id=>{if(validId(id))activeThread=id;},nativeChat:async id=>{if(!config.demo&&id&&id!==nativeThread)await request('native_chat',{id});setMode('native');}};
+  const host={call:request,getContext:context,onContextChange:fn=>(contextListeners.add(fn),()=>contextListeners.delete(fn)),onEvent:fn=>(eventListeners.add(fn),()=>eventListeners.delete(fn)),setActiveThread:id=>{if(validId(id))activeThread=id;},nativeChat:async id=>{
+    if(state.handingOff)throw new Error('正在返回原生聊天，请稍候');state.handingOff=true;for(const fn of contextListeners)fn(context());
+    try{if(!config.demo&&id)await request('native_chat',{id});setMode('native');}
+    finally{state.handingOff=false;for(const fn of contextListeners)fn(context());}
+  }};
   const style=make('style',`#synapse-chat-switch{display:inline-flex;align-items:center;gap:2px;padding:3px;margin-inline-end:6px;border:1px solid var(--color-border,#dcdfe4);border-radius:9px;background:var(--color-background,#f5f6f7);pointer-events:auto;-webkit-app-region:no-drag;font:12px 'Segoe UI','Microsoft YaHei',sans-serif;white-space:nowrap}#synapse-chat-switch button{border:0;border-radius:6px;padding:6px 10px;background:transparent;color:var(--color-text-secondary,#6c7078);cursor:pointer;font:inherit;line-height:18px;white-space:nowrap}#synapse-chat-switch button[aria-selected=true]{background:var(--color-background-elevated,#fff);color:var(--color-text,#24262b);box-shadow:0 1px 4px #00000016}#synapse-chat-canvas{position:fixed;z-index:29;overflow:hidden;background:var(--color-background,#f5f6f8);color:var(--color-text,#25282e);pointer-events:auto}#synapse-chat-canvas[hidden]{display:none}#synapse-chat-canvas .synapse-loading{padding:32px;font:13px 'Segoe UI','Microsoft YaHei',sans-serif;line-height:1.8}`);
   const bar=make('div','',{id:'synapse-chat-switch',role:'tablist','aria-label':'原生对话与会话画布'});
   const nativeButton=make('button','原生对话',{type:'button',role:'tab','data-synapse-mode':'native'}),canvasButton=make('button','会话画布',{type:'button',role:'tab','data-synapse-mode':'canvas'});
@@ -55,7 +59,7 @@ export function installNativeHost(config) {
     updateLayout();
   };
   const queueMount=()=>{if(queued||disposed)return;queued=true;queueMicrotask(mount);};
-  nativeButton.onclick=async()=>{nativeButton.disabled=true;try{await host.nativeChat(activeThread);}catch(error){canvasButton.title=error.message;}finally{nativeButton.disabled=false;}};
+  nativeButton.onclick=async()=>{nativeButton.disabled=true;try{await host.nativeChat(activeThread);}catch(error){canvasButton.title=error.message;for(const fn of eventListeners)fn({kind:'native_handoff_error',message:error.message});}finally{nativeButton.disabled=false;}};
   canvasButton.onclick=()=>setMode('canvas');
   const observer=new MutationObserver(queueMount);
   window.addEventListener('resize',updateLayout);
@@ -64,7 +68,7 @@ export function installNativeHost(config) {
     if(message.event){for(const fn of eventListeners)fn(message.event);return;}
     const p=pending.get(message.id);if(!p)return;clearTimeout(p.timer);pending.delete(message.id);message.error?p.reject(new Error(message.error)):p.resolve(message.result);
   },setCss:css=>{let sheet=shadow.querySelector('style');if(!sheet){sheet=make('style');shadow.prepend(sheet);}sheet.textContent=css;},getLayout:()=>({insideNativeHeader:!!currentHeader?.contains(bar),threadId:nativeThread,mode:state.mode,ready:state.ready}),uninstall:()=>{
-    disposed=true;observer.disconnect();resizeObserver?.disconnect();window.removeEventListener('resize',updateLayout);if(mounted)window.SynapseCanvas?.unmount(surface);restoreStyles();bar.remove();canvas.remove();style.remove();for(const p of pending.values()){clearTimeout(p.timer);p.reject(new Error('画布已关闭'));}pending.clear();contextListeners.clear();eventListeners.clear();delete window.__codexSynapse;
+    disposed=true;observer.disconnect();resizeObserver?.disconnect();window.removeEventListener('resize',updateLayout);if(mounted)window.SynapseCanvas?.unmount(surface);window.__codexSynapseSidebar?.uninstall();restoreStyles();bar.remove();canvas.remove();style.remove();for(const p of pending.values()){clearTimeout(p.timer);p.reject(new Error('画布已关闭'));}pending.clear();contextListeners.clear();eventListeners.clear();delete window.__codexSynapse;
   }};
   setMode('native');
   const install=()=>{mount();observer.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['data-response-annotation-conversation']});};
