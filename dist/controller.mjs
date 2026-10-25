@@ -122,15 +122,15 @@ function installNativeHost(config2) {
   const visible = (e) => e.getBoundingClientRect().width > 10 && e.getBoundingClientRect().height > 10;
   const findHeader = () => [...document.querySelectorAll("header[data-app-shell-titlebar]")].find(visible);
   const findMain = () => [...document.querySelectorAll("main[data-app-shell-main-surface]")].find(visible);
-  const validId2 = (id2) => typeof id2 === "string" && /^[\w-]{8,100}$/.test(id2);
+  const validId3 = (id2) => typeof id2 === "string" && /^[\w-]{8,100}$/.test(id2);
   const readThread = () => {
     const main = findMain();
     if (!main) return null;
-    const ids = [...main.querySelectorAll("[data-response-annotation-conversation]")].map((e) => e.getAttribute("data-response-annotation-conversation")).filter(validId2);
+    const ids = [...main.querySelectorAll("[data-response-annotation-conversation]")].map((e) => e.getAttribute("data-response-annotation-conversation")).filter(validId3);
     return ids.at(-1) || null;
   };
   let nativeThread = null;
-  const context = () => ({ threadId: config2.demo ? null : nativeThread, testing: !!config2.demo, readOnly: !!config2.readOnly, canvasVisible: state.mode === "canvas" });
+  const context = () => ({ threadId: config2.demo ? null : nativeThread, testing: !!config2.demo, readOnly: !!config2.readOnly, canvasVisible: state.mode === "canvas" && !state.handingOff });
   const request = (name, args = {}) => new Promise((resolve2, reject) => {
     if (disposed || pending.size >= 128) {
       reject(new Error("\u753B\u5E03\u8FDE\u63A5\u4E0D\u53EF\u7528"));
@@ -150,10 +150,18 @@ function installNativeHost(config2) {
     }
   });
   const host = { call: request, getContext: context, onContextChange: (fn) => (contextListeners.add(fn), () => contextListeners.delete(fn)), onEvent: (fn) => (eventListeners.add(fn), () => eventListeners.delete(fn)), setActiveThread: (id2) => {
-    if (validId2(id2)) activeThread = id2;
+    if (validId3(id2)) activeThread = id2;
   }, nativeChat: async (id2) => {
-    if (!config2.demo && id2 && id2 !== nativeThread) await request("native_chat", { id: id2 });
-    setMode("native");
+    if (state.handingOff) throw new Error("\u6B63\u5728\u8FD4\u56DE\u539F\u751F\u804A\u5929\uFF0C\u8BF7\u7A0D\u5019");
+    state.handingOff = true;
+    for (const fn of contextListeners) fn(context());
+    try {
+      if (!config2.demo && id2) await request("native_chat", { id: id2 });
+      setMode("native");
+    } finally {
+      state.handingOff = false;
+      for (const fn of contextListeners) fn(context());
+    }
   } };
   const style = make("style", `#synapse-chat-switch{display:inline-flex;align-items:center;gap:2px;padding:3px;margin-inline-end:6px;border:1px solid var(--color-border,#dcdfe4);border-radius:9px;background:var(--color-background,#f5f6f7);pointer-events:auto;-webkit-app-region:no-drag;font:12px 'Segoe UI','Microsoft YaHei',sans-serif;white-space:nowrap}#synapse-chat-switch button{border:0;border-radius:6px;padding:6px 10px;background:transparent;color:var(--color-text-secondary,#6c7078);cursor:pointer;font:inherit;line-height:18px;white-space:nowrap}#synapse-chat-switch button[aria-selected=true]{background:var(--color-background-elevated,#fff);color:var(--color-text,#24262b);box-shadow:0 1px 4px #00000016}#synapse-chat-canvas{position:fixed;z-index:29;overflow:hidden;background:var(--color-background,#f5f6f8);color:var(--color-text,#25282e);pointer-events:auto}#synapse-chat-canvas[hidden]{display:none}#synapse-chat-canvas .synapse-loading{padding:32px;font:13px 'Segoe UI','Microsoft YaHei',sans-serif;line-height:1.8}`);
   const bar = make("div", "", { id: "synapse-chat-switch", role: "tablist", "aria-label": "\u539F\u751F\u5BF9\u8BDD\u4E0E\u4F1A\u8BDD\u753B\u5E03" });
@@ -252,6 +260,7 @@ function installNativeHost(config2) {
       await host.nativeChat(activeThread);
     } catch (error62) {
       canvasButton.title = error62.message;
+      for (const fn of eventListeners) fn({ kind: "native_handoff_error", message: error62.message });
     } finally {
       nativeButton.disabled = false;
     }
@@ -283,6 +292,7 @@ function installNativeHost(config2) {
     resizeObserver?.disconnect();
     window.removeEventListener("resize", updateLayout);
     if (mounted) window.SynapseCanvas?.unmount(surface);
+    window.__codexSynapseSidebar?.uninstall();
     restoreStyles();
     bar.remove();
     canvas.remove();
@@ -302,6 +312,166 @@ function installNativeHost(config2) {
     observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-response-annotation-conversation"] });
   };
   document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", install, { once: true }) : install();
+}
+
+// runtime/native-sidebar.mjs
+function installNativeSidebar({ demo = false } = {}) {
+  if (demo || window !== window.top) return null;
+  if (window.__codexSynapseSidebar) return window.__codexSynapseSidebar;
+  const key = "synapse.native-sidebar.v1", id2 = (value) => typeof value === "string" && /^[a-zA-Z0-9_-]{1,100}$/.test(value);
+  let parents = /* @__PURE__ */ new Map(), expanded = /* @__PURE__ */ new Set(), timer = null, disposed = false;
+  const controls = /* @__PURE__ */ new Map(), patched = /* @__PURE__ */ new Set();
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || "{}");
+    parents = new Map((saved.parents || []).filter(([child, parent]) => id2(child) && id2(parent) && child !== parent).slice(0, 1e4));
+    expanded = new Set((saved.expanded || []).filter(id2));
+  } catch {
+  }
+  const persist = () => {
+    try {
+      localStorage.setItem(key, JSON.stringify({ parents: [...parents], expanded: [...expanded] }));
+    } catch {
+    }
+  };
+  const rootOf = (child) => {
+    const seen = /* @__PURE__ */ new Set([child]);
+    let root2 = parents.get(child);
+    if (!root2) return null;
+    while (parents.has(root2)) {
+      if (seen.has(root2)) return null;
+      seen.add(root2);
+      root2 = parents.get(root2);
+    }
+    return seen.has(root2) ? null : root2;
+  };
+  const rowId = (row) => {
+    if (row.getAttribute("data-app-action-sidebar-thread-kind") !== "local" || row.getAttribute("data-app-action-sidebar-thread-host-id") !== "local") return null;
+    const value = row.getAttribute("data-app-action-sidebar-thread-id") || "";
+    return value.startsWith("local:") && id2(value.slice(6)) ? value.slice(6) : null;
+  };
+  const style = document.createElement("style");
+  style.id = "synapse-native-branch-style";
+  style.textContent = '[data-sidebar-navigation-root] [data-synapse-branch-hidden="true"]{display:none!important}[data-sidebar-navigation-root] .synapse-native-branch-toggle{display:block;flex:none;max-width:calc(100% - 24px);margin:0 8px 5px 24px;padding:4px 8px;border:0;border-radius:6px;background:transparent;color:var(--color-text-secondary,#73766d);font:11px/1.5 "Segoe UI","Microsoft YaHei",sans-serif;text-align:start;cursor:pointer;-webkit-app-region:no-drag}[data-sidebar-navigation-root] .synapse-native-branch-toggle:hover{background:var(--color-background-hover,#e9e7df)}[data-sidebar-navigation-root] .synapse-native-branch-toggle:focus-visible{outline:2px solid currentColor;outline-offset:1px}[data-sidebar-navigation-root] .synapse-native-branch-toggle[data-current="true"]{color:var(--color-text,#425a47)}';
+  const set2 = (node3, name, value) => {
+    if (node3.getAttribute(name) !== value) node3.setAttribute(name, value);
+  };
+  const ensureControl = (anchor2, group, count, current, orphan = false) => {
+    let button = controls.get(anchor2);
+    if (!button) {
+      button = document.createElement("button");
+      button.type = "button";
+      button.className = "synapse-native-branch-toggle";
+      controls.set(anchor2, button);
+    }
+    const open2 = expanded.has(group);
+    button.dataset.group = group;
+    const label = `${open2 ? "\u25BE" : "\u25B8"} ${count} \u6761\u753B\u5E03\u5206\u652F${current ? " \xB7 \u5F53\u524D\u5728\u5206\u652F" : ""} \xB7 ${open2 ? "\u6536\u8D77" : "\u5C55\u5F00"}`;
+    if (button.textContent !== label) button.textContent = label;
+    set2(button, "aria-label", `${open2 ? "\u6536\u8D77" : "\u5C55\u5F00"}${count}\u6761\u753B\u5E03\u5206\u652F`);
+    set2(button, "aria-expanded", String(open2));
+    set2(button, "data-current", String(current));
+    button.title = "\u53EA\u6298\u53E0\u6B64\u4FA7\u680F\u4E2D\u7684\u663E\u793A\uFF1B\u5B8C\u6574\u5206\u652F\u4ECD\u4FDD\u7559\u5728\u4F1A\u8BDD\u753B\u5E03\u4E2D";
+    button.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      open2 ? expanded.delete(group) : expanded.add(group);
+      persist();
+      render();
+    };
+    if (orphan) {
+      if (button.parentElement !== anchor2) anchor2.prepend(button);
+    } else if (anchor2.nextSibling !== button) anchor2.after(button);
+    return button;
+  };
+  const render = () => {
+    timer = null;
+    if (disposed || !document.body) return;
+    if (!style.isConnected) document.head.append(style);
+    const needed = /* @__PURE__ */ new Set(), hidden = /* @__PURE__ */ new Set();
+    for (const sidebar of document.querySelectorAll("[data-sidebar-navigation-root]")) {
+      const rows = [...sidebar.querySelectorAll("[data-app-action-sidebar-thread-row]")], byId = /* @__PURE__ */ new Map(), families = /* @__PURE__ */ new Map(), orphans = [];
+      for (const row of rows) {
+        const value = rowId(row);
+        if (value) {
+          if (!byId.has(value)) byId.set(value, []);
+          byId.get(value).push(row);
+        }
+      }
+      for (const row of rows) {
+        const child = rowId(row), root2 = child && rootOf(child);
+        if (!root2) continue;
+        if (!families.has(root2)) families.set(root2, []);
+        families.get(root2).push({ row, child });
+      }
+      for (const [root2, members2] of families) {
+        const anchors = byId.get(root2) || [];
+        if (!anchors.length) {
+          orphans.push(...members2);
+          continue;
+        }
+        const count = new Set(members2.map((m) => m.child)).size, current = members2.some((m) => m.row.getAttribute("data-app-action-sidebar-thread-selected") === "true");
+        for (const anchor2 of anchors) {
+          needed.add(anchor2);
+          ensureControl(anchor2, root2, count, current);
+        }
+        if (!expanded.has(root2)) for (const { row } of members2) hidden.add(row);
+      }
+      if (orphans.length) {
+        const group = "unlisted-branches", count = new Set(orphans.map((m) => m.child)).size;
+        needed.add(sidebar);
+        ensureControl(sidebar, group, count, orphans.some((m) => m.row.getAttribute("data-app-action-sidebar-thread-selected") === "true"), true);
+        if (!expanded.has(group)) for (const { row } of orphans) hidden.add(row);
+      }
+    }
+    for (const row of patched) if (!hidden.has(row)) {
+      row.removeAttribute("data-synapse-branch-hidden");
+      patched.delete(row);
+    }
+    for (const row of hidden) {
+      set2(row, "data-synapse-branch-hidden", "true");
+      patched.add(row);
+    }
+    for (const [anchor2, button] of controls) if (!needed.has(anchor2) || !anchor2.isConnected) {
+      button.remove();
+      controls.delete(anchor2);
+    }
+  };
+  const schedule = () => {
+    if (timer === null && !disposed) timer = setTimeout(render, 60);
+  };
+  const observer = new MutationObserver(schedule);
+  const api = { update: (branches) => {
+    const next = /* @__PURE__ */ new Map();
+    for (const [child, branch] of Object.entries(branches || {}).slice(0, 1e4)) if (id2(child) && id2(branch?.parentId) && child !== branch.parentId) next.set(child, branch.parentId);
+    const before = JSON.stringify([...parents]);
+    parents = next;
+    if (before !== JSON.stringify([...parents])) persist();
+    render();
+  }, refresh: render, getStatus: () => ({ knownBranches: parents.size, hiddenRows: [...patched].filter((row) => row.isConnected).length, groups: controls.size }), uninstall: () => {
+    disposed = true;
+    clearTimeout(timer);
+    observer.disconnect();
+    for (const row of patched) row.removeAttribute("data-synapse-branch-hidden");
+    for (const button of controls.values()) button.remove();
+    controls.clear();
+    patched.clear();
+    style.remove();
+    delete window.__codexSynapseSidebar;
+  } };
+  window.__codexSynapseSidebar = api;
+  observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-app-action-sidebar-thread-id", "data-app-action-sidebar-thread-kind", "data-app-action-sidebar-thread-host-id", "data-app-action-sidebar-thread-selected"] });
+  render();
+  return api;
+}
+
+// runtime/native-navigation.mjs
+function nativeHandoffState(id2, retry = false) {
+  const sameThread = window.__codexSynapse?.getLayout().threadId === id2;
+  const main = [...document.querySelectorAll("main[data-app-shell-main-surface]")].find((e) => e.getBoundingClientRect().width > 10);
+  const lock = /已在另一个应用中打开|在其他应用中打开|(?:opened?|open) in another app|another application/i;
+  const button = main && [...main.querySelectorAll("button")].find((e) => /^(重试|Retry)$/i.test(e.textContent.trim()) && [e.parentElement, e.parentElement?.parentElement, e.parentElement?.parentElement?.parentElement].some((parent) => parent && lock.test(parent.textContent)));
+  if (sameThread && button && retry && !button.disabled) button.click();
+  return { sameThread, locked: !!button };
 }
 
 // server/native-backend.mjs
@@ -20256,6 +20426,30 @@ var CodexRpc = class extends EventEmitter3 {
   listApprovals(id2) {
     return this.approvals.list(id2);
   }
+  get connected() {
+    return !!this.process;
+  }
+  async disconnectForHandoff() {
+    if (this.pending.size || this.approvals.list().length) throw new Error("\u753B\u5E03\u8FDE\u63A5\u4ECD\u6709\u8BF7\u6C42\uFF0C\u672A\u91CA\u653E\u4F1A\u8BDD");
+    const child = this.process;
+    if (!child) return;
+    const exited = new Promise((resolve2) => child.once("exit", resolve2));
+    this.process = null;
+    this.ready = null;
+    this.reader?.close();
+    child.stdin.end();
+    const timeout = (ms) => new Promise((resolve2) => {
+      const timer = setTimeout(() => resolve2(false), ms);
+      exited.then(() => {
+        clearTimeout(timer);
+        resolve2(true);
+      });
+    });
+    if (!await timeout(2500)) {
+      if (!child.killed) child.kill();
+      if (!await timeout(2500)) throw new Error("\u753B\u5E03\u4F1A\u8BDD\u670D\u52A1\u5C1A\u672A\u9000\u51FA\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5");
+    }
+  }
   respondApproval(args) {
     return this.approvals.respond(args);
   }
@@ -27765,6 +27959,44 @@ var WorkspaceService = class {
   }
 };
 
+// server/native-handoff.mjs
+var validId2 = (id2) => typeof id2 === "string" && /^[a-zA-Z0-9_-]{1,100}$/.test(id2);
+var pages = async (rpc, method, args = {}) => {
+  const data = [], seen = /* @__PURE__ */ new Set();
+  let cursor2;
+  do {
+    const page = await rpc.call(method, { ...args, ...cursor2 ? { cursor: cursor2 } : {} });
+    if (!Array.isArray(page?.data)) throw new Error("\u65E0\u6CD5\u786E\u8BA4\u753B\u5E03\u4F1A\u8BDD\u5360\u7528\u72B6\u6001\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5");
+    data.push(...page.data);
+    cursor2 = page.nextCursor;
+    if (cursor2 && seen.has(cursor2)) throw new Error("\u4F1A\u8BDD\u72B6\u6001\u5206\u9875\u5F02\u5E38\uFF0C\u672A\u91CA\u653E\u8FDE\u63A5");
+    if (cursor2) seen.add(cursor2);
+  } while (cursor2);
+  return data;
+};
+var releaseForNative = async (rpc, workspace, id2) => {
+  if (!validId2(id2)) throw new Error("\u65E0\u6548\u4F1A\u8BDD\u6807\u8BC6");
+  if (rpc.connected === false) return { released: false };
+  const loaded = await pages(rpc, "thread/loaded/list");
+  if (loaded.some((value) => !validId2(value))) throw new Error("\u4F1A\u8BDD\u5360\u7528\u8FD4\u56DE\u683C\u5F0F\u5F02\u5E38\uFF0C\u672A\u91CA\u653E\u8FDE\u63A5");
+  if (!loaded.includes(id2)) return { released: false };
+  if (workspace.sending.size || workspace.listApprovals().length) throw new Error("\u753B\u5E03\u4ECD\u5728\u63D0\u4EA4\u6216\u7B49\u5F85\u5BA1\u6279\uFF0C\u8BF7\u5148\u5B8C\u6210\u540E\u518D\u8FD4\u56DE\u539F\u751F\u804A\u5929");
+  for (const threadId2 of loaded) {
+    const { thread } = await rpc.call("thread/read", { threadId: threadId2, includeTurns: false });
+    if (!["idle", "notLoaded"].includes(thread?.status?.type)) throw new Error("\u753B\u5E03\u4E2D\u4ECD\u6709\u5206\u652F\u5728\u751F\u6210\u6216\u7B49\u5F85\u5904\u7406\uFF0C\u8BF7\u5148\u5B8C\u6210\u540E\u518D\u8FD4\u56DE\u539F\u751F\u804A\u5929");
+    const terminals = await pages(rpc, "thread/backgroundTerminals/list", { threadId: threadId2 });
+    if (terminals.length) throw new Error("\u753B\u5E03\u5206\u652F\u8FD8\u6709\u540E\u53F0\u547D\u4EE4\u8FD0\u884C\uFF0C\u8BF7\u5148\u5904\u7406\u540E\u518D\u8FD4\u56DE\u539F\u751F\u804A\u5929");
+  }
+  if (workspace.sending.size || workspace.listApprovals().length) throw new Error("\u753B\u5E03\u51FA\u73B0\u5F85\u5904\u7406\u8BF7\u6C42\uFF0C\u6682\u672A\u91CA\u653E\u4F1A\u8BDD");
+  for (const threadId2 of loaded) {
+    const result = await rpc.call("thread/unsubscribe", { threadId: threadId2 });
+    if (!["unsubscribed", "notSubscribed", "notLoaded"].includes(result?.status)) throw new Error("\u5F53\u524D\u7248\u672C\u65E0\u6CD5\u786E\u8BA4\u4F1A\u8BDD\u5DF2\u53D6\u6D88\u8BA2\u9605\uFF0C\u672A\u65AD\u5F00\u8FDE\u63A5");
+  }
+  await rpc.disconnectForHandoff();
+  workspace.live.clear();
+  return { released: true, releasedThreads: loaded.length };
+};
+
 // server/native-backend.mjs
 var id = external_exports.string().regex(/^[a-zA-Z0-9_-]{1,100}$/);
 var cursor = external_exports.string().min(1).max(4096).optional();
@@ -27803,6 +28035,8 @@ function validateLayout(patch) {
   inspect(patch);
 }
 var NativeBackend = class extends EventEmitter4 {
+  activeCalls = /* @__PURE__ */ new Set();
+  handingOff = false;
   constructor({ rpc, store, dataDirectory: dataDirectory2, rpcOptions } = {}) {
     super();
     this.rpc = rpc ?? new CodexRpc(rpcOptions);
@@ -27824,6 +28058,27 @@ var NativeBackend = class extends EventEmitter4 {
     this.rpc.on("unsupportedRequest", this.forwardUnsupported);
   }
   async call(name, args = {}) {
+    if (this.handingOff) throw new Error("\u6B63\u5728\u8FD4\u56DE\u539F\u751F\u804A\u5929\uFF0C\u8BF7\u7A0D\u5019");
+    const running = this.dispatch(name, args);
+    this.activeCalls.add(running);
+    try {
+      return await running;
+    } finally {
+      this.activeCalls.delete(running);
+    }
+  }
+  async withNativeHandoff(id2, navigate2) {
+    if (this.closed || this.handingOff) throw new Error("\u6B63\u5728\u5207\u6362\u4F1A\u8BDD\uFF0C\u8BF7\u7A0D\u5019");
+    this.handingOff = true;
+    try {
+      await Promise.allSettled([...this.activeCalls]);
+      const result = await releaseForNative(this.rpc, this.workspace, id2);
+      return await navigate2(result);
+    } finally {
+      this.handingOff = false;
+    }
+  }
+  async dispatch(name, args = {}) {
     if (this.closed) throw new Error("\u5DE5\u4F5C\u53F0\u5DF2\u5173\u95ED");
     if (typeof name !== "string") throw new Error("\u65E0\u6548\u5DE5\u5177\u540D\u79F0");
     const method = Object.hasOwn(aliases, name) ? aliases[name] : name;
@@ -28023,12 +28278,16 @@ var getBackend = () => {
 async function navigate(client, contextId, id2) {
   if (typeof id2 !== "string" || !/^[\w-]{8,100}$/.test(id2)) throw new Error("\u65E0\u6548\u7684\u4F1A\u8BDD\u6807\u8BC6");
   if (options.demo) throw new Error("\u6F14\u793A\u4F1A\u8BDD\u6CA1\u6709\u5BF9\u5E94\u7684\u539F\u751F\u804A\u5929");
-  await client.evaluate(`window.dispatchEvent(new MessageEvent('message',{data:{type:'navigate-to-route',path:${JSON.stringify("/local/" + id2)}}}))`, contextId);
-  for (let n = 0; n < 80; n++) {
-    if (await client.evaluate(`window.__codexSynapse?.host.getContext().threadId===${JSON.stringify(id2)}`, contextId)) return { opened: true };
-    await delay(100);
-  }
-  throw new Error("\u672A\u80FD\u786E\u8BA4\u539F\u751F\u4F1A\u8BDD\u5DF2\u6253\u5F00\uFF0C\u8BF7\u4ECE\u4FA7\u680F\u9009\u62E9\u8BE5\u4F1A\u8BDD");
+  const open2 = async () => {
+    await client.evaluate(`window.dispatchEvent(new MessageEvent('message',{data:{type:'navigate-to-route',path:${JSON.stringify("/local/" + id2)}}}))`, contextId);
+    for (let n = 0; n < 60; n++) {
+      const state = await client.evaluate(`(${nativeHandoffState.toString()})(${JSON.stringify(id2)},${n % 5 === 0})`, contextId);
+      if (state.sameThread && !state.locked) return { opened: true };
+      await delay(150);
+    }
+    throw new Error("\u539F\u751F\u804A\u5929\u4ECD\u88AB\u5176\u4ED6\u7A97\u53E3\u5360\u7528\uFF0C\u8BF7\u5728\u90A3\u91CC\u5173\u95ED\u8BE5\u4F1A\u8BDD\u540E\u91CD\u8BD5");
+  };
+  return backend ? backend.withNativeHandoff(id2, open2) : open2();
 }
 async function attach(target) {
   const client = await Cdp.connect(target.webSocketDebuggerUrl), contexts = /* @__PURE__ */ new Map();
@@ -28076,9 +28335,10 @@ async function attach(target) {
     if (!frame.parentId) entry.frameId = frame.id;
   });
   await client.call("Runtime.addBinding", { name: binding });
-  const source = `(${installNativeHost.toString()})(${JSON.stringify({ binding, channel, demo: !!options.demo, readOnly: !!options.readOnly })})`;
+  const source = `window.__codexSynapse?.uninstall();window.__codexSynapseSidebar?.uninstall();(${installNativeSidebar.toString()})(${JSON.stringify({ demo: !!options.demo })});(${installNativeHost.toString()})(${JSON.stringify({ binding, channel, demo: !!options.demo, readOnly: !!options.readOnly })})`;
   entry.script = (await client.call("Page.addScriptToEvaluateOnNewDocument", { source })).identifier;
   await client.evaluate(source);
+  if (options.initialCanvasMode === "canvas") await client.evaluate('window.__codexSynapse?.setMode("canvas")');
 }
 async function shutdown() {
   if (shuttingDown) return;
@@ -28131,10 +28391,12 @@ try {
   throw error62;
 }
 try {
-  await unlink(join3(profile, "DevToolsActivePort")).catch(() => {
-  });
-  app = spawn2(options.executable, [`--user-data-dir=${profile}`, "--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1", "--no-first-run"], { cwd: dirname(options.executable), env: { ...process.env, CODEX_ELECTRON_USER_DATA_PATH: profile }, windowsHide: false, stdio: "ignore" });
-  app.on("error", () => shutdown());
+  if (!options.adoptExisting) {
+    await unlink(join3(profile, "DevToolsActivePort")).catch(() => {
+    });
+    app = spawn2(options.executable, [`--user-data-dir=${profile}`, "--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1", "--no-first-run"], { cwd: dirname(options.executable), env: { ...process.env, CODEX_ELECTRON_USER_DATA_PATH: profile }, windowsHide: false, stdio: "ignore" });
+    app.on("error", () => shutdown());
+  } else if (!Number.isInteger(options.existingAppPid) || !options.existingStartedAt) throw new Error("Existing enhanced window identity is required");
   let found;
   for (let n = 0; n < 160; n++) {
     try {
@@ -28146,7 +28408,7 @@ try {
   }
   if (!found) throw new Error("Codex did not expose a local interface in time");
   browser = await Cdp.connect(found.browser);
-  await writeFile2(join3(dataDirectory, "runtime-status.json"), JSON.stringify({ pid: process.pid, appPid: app.pid, demo: !!options.demo, readOnly: !!options.readOnly, startedAt: (/* @__PURE__ */ new Date()).toISOString() }));
+  await writeFile2(join3(dataDirectory, "runtime-status.json"), JSON.stringify({ pid: process.pid, appPid: app?.pid ?? options.existingAppPid, demo: !!options.demo, readOnly: !!options.readOnly, startedAt: options.adoptExisting ? options.existingStartedAt : (/* @__PURE__ */ new Date()).toISOString(), controllerStartedAt: (/* @__PURE__ */ new Date()).toISOString() }));
   let polling = false, emptySince = null, discoveryFailures = 0;
   const poll = async () => {
     if (polling || shuttingDown) return;
@@ -28154,8 +28416,8 @@ try {
     try {
       const { targets } = await discover(pathToFileURL(profile).href);
       discoveryFailures = 0;
-      const pages = targets.filter((t) => t.type === "page" && t.url === "app://-/index.html");
-      for (const t of pages) if (!clients.has(t.id)) {
+      const pages2 = targets.filter((t) => t.type === "page" && t.url === "app://-/index.html");
+      for (const t of pages2) if (!clients.has(t.id)) {
         try {
           await attach(t);
         } catch {
@@ -28163,7 +28425,7 @@ try {
           clients.delete(t.id);
         }
       }
-      if (!pages.length) {
+      if (!pages2.length) {
         emptySince ??= Date.now();
         if (Date.now() - emptySince > 15e3) await shutdown();
       } else emptySince = null;
