@@ -1,4 +1,4 @@
-<!-- README_SYNC: source=working-tree-v0.3.4; updated=2026-10-25 -->
+<!-- README_SYNC: source=working-tree-v0.3.6; updated=2026-10-25 -->
 <p align="center"><a href="./README.md">简体中文</a> · English</p>
 
 # Codex Synapse · Conversation Canvas
@@ -13,7 +13,7 @@ An unofficial Windows Codex desktop adaptation that maps turns and historical fo
 
 If this adaptation helps, [star it for later](https://github.com/g1066295317-jpg/codex-synapse/stargazers) and consider [starring the original project](https://github.com/liangmianya/dsh-synapse/stargazers).
 
-[![Version](https://img.shields.io/badge/version-0.3.4-blue)](./package.json)
+[![Version](https://img.shields.io/badge/version-0.3.6-blue)](./package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue)](#quick-start)
 [![Node](https://img.shields.io/badge/Node.js-%3E%3D22-339933)](./package.json)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
@@ -21,6 +21,14 @@ If this adaptation helps, [star it for later](https://github.com/g1066295317-jpg
 ![Fixed nodes, automatic branch layout and edge scrollbars](./docs/canvas-preview.png)
 
 *Actual interface with synthetic data and no private conversations. The Douyin URL is the user-supplied original video share link, not a verified author profile. See [ATTRIBUTION.md](./ATTRIBUTION.md).*
+
+## Changes in 0.3.6
+
+- Canvas-created branches collapse in the native sidebar with an expand control. Independent chats with the same title remain separate.
+- Clicking a canvas node opens its complete turn in the right pane without changing zoom.
+- Returning to native chat releases idle canvas-owned sessions first. Active generation, approvals and background commands keep their connection and show an explanation.
+
+See the [changelog](./CHANGELOG.md).
 
 ## Features
 
@@ -49,9 +57,11 @@ The execution-policy override applies only to that launch. Codex, Node.js, accou
 
 ## Interaction
 
-Click a node to read a turn. Continue the latest turn in the same session or fork a historical turn/quoted answer. Sending uses your existing account and configuration. Handle tool approvals explicitly or return to native chat.
+Click a node to open the complete turn in the right pane. Continue the latest turn in the same session or fork a historical turn/quoted answer. Sending uses your existing account and configuration. Handle tool approvals explicitly or return to native chat.
 
 The wheel zooms; bottom/right bars pan. Locate-current-turn preserves zoom, while fit-to-canvas deliberately changes it. Nodes are fixed and layout is automatic.
+
+Canvas branches collapse in the native sidebar and can be expanded below their parent. Returning to native chat releases idle canvas ownership. Finish active generation, approvals or background commands in the canvas first. A chat owned by another real client window still needs to be closed there.
 
 Forks share the working directory and **do not create Git worktrees**. Use Codex worktrees for isolated code changes. Only locally accessible Codex sessions are covered, excluding ChatGPT cloud conversations and other hosts.
 
@@ -82,9 +92,9 @@ npm run build:launcher
 
 `build:launcher` uses the Windows .NET Framework 4.x C# compiler to create `CodexSynapseLauncher.exe`, which activates an existing enhanced window or starts one. See [CodexSynapseLauncher.cs](./CodexSynapseLauncher.cs).
 
-As of 2026-10-25, **53 synthetic tests pass locally**, covering historical-fork parameters, quotes, approvals, state, equations/fonts, viewport preservation, scrollbars, fixed nodes and automatic layout. Browser tests need Playwright Chromium or installed Chrome / Edge. Without a browser they are skipped; skipped tests must not count as passes.
+As of 2026-10-25, **62 synthetic tests pass locally**, covering historical-fork parameters, quotes, approvals, state, equations/fonts, viewport preservation, scrollbars, fixed nodes, automatic layout, sidebar folding and native handoff protection. Browser tests need Playwright Chromium or installed Chrome / Edge. Without a browser they are skipped; skipped tests must not count as passes.
 
-Native topbar mounting, switching, returning to sessions, reload recovery and shortcut launch were verified locally. **Real-account model generation and fork creation have not been tested end to end**; those interactions use synthetic backends in tests. Default tests send no real messages and create no real chats. No cross-version compatibility or coverage percentage is claimed.
+Native topbar mounting, switching, returning to sessions, reload recovery and shortcut launch were verified locally. An existing canvas branch was also checked: returning to native chat removed its ownership notice and restored an editable composer, without typing or sending a message. **Real-account model generation and fork creation have not been tested end to end**; those interactions use synthetic backends in tests. Default tests send no real messages and create no real chats. No cross-version compatibility or coverage percentage is claimed.
 
 ## Compatibility and data boundaries
 

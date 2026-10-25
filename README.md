@@ -1,4 +1,4 @@
-<!-- README_SYNC: source=working-tree-v0.3.4; updated=2026-10-25 -->
+<!-- README_SYNC: source=working-tree-v0.3.6; updated=2026-10-25 -->
 <p align="center">简体中文 · <a href="./README_EN.md">English</a></p>
 
 # Codex Synapse · 会话画布
@@ -13,7 +13,7 @@
 
 如果适配版对你有用，欢迎 [Star 收藏](https://github.com/g1066295317-jpg/codex-synapse/stargazers)，也请为 [原项目点 Star](https://github.com/liangmianya/dsh-synapse/stargazers)。
 
-[![Version](https://img.shields.io/badge/version-0.3.4-blue)](./package.json)
+[![Version](https://img.shields.io/badge/version-0.3.6-blue)](./package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue)](#快速开始)
 [![Node](https://img.shields.io/badge/Node.js-%3E%3D22-339933)](./package.json)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
@@ -21,6 +21,14 @@
 ![固定节点、分支自动排列与边缘滚动条](./docs/canvas-preview.png)
 
 *实际界面的合成数据截图，不含私人聊天。抖音地址采用用户提供的原始视频分享链接，不冒充已核验的作者主页。完整来源见 [ATTRIBUTION.md](./ATTRIBUTION.md)。*
+
+## 0.3.6 更新
+
+- 原生侧栏默认折叠画布创建的分支，保留展开入口，同名独立聊天不合并。
+- 单击画布节点即在右侧显示完整问答，保持当前缩放。
+- 返回原生聊天时先释放画布的空闲会话占用，再由原生聊天接手；生成、待审批或后台命令未结束时保留连接并提示。
+
+详见 [更新记录](./CHANGELOG.md)。
 
 ## 能做什么
 
@@ -49,9 +57,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\launch-native.
 
 ## 使用方式
 
-点击节点阅读问答；最新轮次可继续原会话，历史轮次或引用追问会建立分支。发送使用已有 Codex 账户与配置。工具审批须明确选择，或切回原生聊天处理。
+单击节点会自动在右侧打开完整问答；最新轮次可继续原会话，历史轮次或引用追问会建立分支。发送使用已有 Codex 账户与配置。工具审批须明确选择，或切回原生聊天处理。
 
 滚轮缩放，拖动底部横条、右侧竖条平移。右上角“定位当前问答”保留比例，“适应画布”才主动调整比例。节点固定，布局自动计算。
+
+原生侧栏默认收起画布分支，可在主会话下点“展开”。返回原生聊天会释放画布的空闲占用；若正在生成、等待审批或运行后台命令，先在画布处理。真正被其他窗口占用的会话仍须在对应窗口关闭。
 
 分叉聊天共享原工作目录，**不会创建 Git worktree**；需要代码隔离时使用 Codex 自身的 worktree。仅覆盖本机可访问的 Codex 会话，不覆盖 ChatGPT 云端聊天或其他主机。
 
@@ -82,9 +92,9 @@ npm run build:launcher
 
 `build:launcher` 使用 Windows .NET Framework 4.x C# 编译器生成 `CodexSynapseLauncher.exe`，用于激活已有增强窗口或启动窗口。源码见 [CodexSynapseLauncher.cs](./CodexSynapseLauncher.cs)。
 
-截至 2026-10-25，本机 **53 项合成测试通过**，涵盖历史轮次分支参数、引用、审批、状态、公式与字体、视野保持、滚动条、固定节点和自动排列。浏览器测试需要 Playwright Chromium 或本机 Chrome / Edge；无浏览器时对应项目会跳过，不能把跳过计作通过。
+截至 2026-10-25，本机 **62 项合成测试通过**，涵盖历史轮次分支参数、引用、审批、状态、公式与字体、视野保持、滚动条、固定节点、自动排列、侧栏折叠和原生会话接手保护。浏览器测试需要 Playwright Chromium 或本机 Chrome / Edge；无浏览器时对应项目会跳过，不能把跳过计作通过。
 
-原生顶栏、切换、返回会话、重载恢复和快捷方式启动已在本机验证。**真实账户的模型生成与分支未进行端到端验收**，相关交互以合成后端验证。默认测试不发送真实消息、不创建真实聊天。没有宣称跨版本兼容或完整覆盖率。
+原生顶栏、切换、返回会话、重载恢复和快捷方式启动已在本机验证。另已对已有画布分支验证：返回原生后占用提示消失、输入框可编辑，验证未输入或发送消息。**真实账户的模型生成与分支未进行端到端验收**，相关交互以合成后端验证。默认测试不发送真实消息、不创建真实聊天。没有宣称跨版本兼容或完整覆盖率。
 
 ## 兼容性与数据边界
 

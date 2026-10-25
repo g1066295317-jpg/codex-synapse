@@ -14,6 +14,7 @@ using System.Security.Cryptography;
  [DataMember(Name="pid")] public int Pid;
  [DataMember(Name="appPid")] public int AppPid;
  [DataMember(Name="startedAt")] public string StartedAt;
+ [DataMember(Name="controllerStartedAt")] public string ControllerStartedAt;
 }
 [DataContract] public class WindowState {
  [DataMember] public int Pid;
@@ -47,7 +48,8 @@ internal static class CodexSynapseLauncher {
     string exe=app.MainModule.FileName;
     if(!exe.StartsWith(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),"WindowsApps","OpenAI.Codex_"),StringComparison.OrdinalIgnoreCase)||!exe.EndsWith("\\app\\ChatGPT.exe",StringComparison.OrdinalIgnoreCase))return null;
     var started=DateTimeOffset.Parse(state.StartedAt,CultureInfo.InvariantCulture);
-    if(Math.Abs((app.StartTime.ToUniversalTime()-started.UtcDateTime).TotalSeconds)>180||Math.Abs((controller.StartTime.ToUniversalTime()-started.UtcDateTime).TotalSeconds)>180)return null;
+    var controllerStarted=String.IsNullOrEmpty(state.ControllerStartedAt)?started:DateTimeOffset.Parse(state.ControllerStartedAt,CultureInfo.InvariantCulture);
+    if(Math.Abs((app.StartTime.ToUniversalTime()-started.UtcDateTime).TotalSeconds)>180||Math.Abs((controller.StartTime.ToUniversalTime()-controllerStarted.UtcDateTime).TotalSeconds)>180)return null;
     return state;
    }
   }}catch{return null;}
