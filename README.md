@@ -1,4 +1,4 @@
-<!-- README_SYNC: source=working-tree-v0.3.6; updated=2026-10-25 -->
+<!-- README_SYNC: source=working-tree-v0.3.9; updated=2026-11-04 -->
 <p align="center">简体中文 · <a href="./README_EN.md">English</a></p>
 
 # Codex Synapse · 会话画布
@@ -13,7 +13,7 @@
 
 如果适配版对你有用，欢迎 [Star 收藏](https://github.com/g1066295317-jpg/codex-synapse/stargazers)，也请为 [原项目点 Star](https://github.com/liangmianya/dsh-synapse/stargazers)。
 
-[![Version](https://img.shields.io/badge/version-0.3.6-blue)](./package.json)
+[![Version](https://img.shields.io/badge/version-0.3.9-blue)](./package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue)](#快速开始)
 [![Node](https://img.shields.io/badge/Node.js-%3E%3D22-339933)](./package.json)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
@@ -22,11 +22,18 @@
 
 *实际界面的合成数据截图，不含私人聊天。抖音地址采用用户提供的原始视频分享链接，不冒充已核验的作者主页。完整来源见 [ATTRIBUTION.md](./ATTRIBUTION.md)。*
 
-## 0.3.6 更新
+## 0.3.9 更新
 
-- 原生侧栏默认折叠画布创建的分支，保留展开入口，同名独立聊天不合并。
-- 单击画布节点即在右侧显示完整问答，保持当前缩放。
-- 返回原生聊天时先释放画布的空闲会话占用，再由原生聊天接手；生成、待审批或后台命令未结束时保留连接并提示。
+- 修复继承的失败/中断轮次被误连到分支起点而形成循环的问题；按完整历史顺序检查分支连线，不把所有受阻节点摊成一行。首次打开定位当前问答，并提供“阅读视图”按钮恢复 85% 比例；“适应画布”仍保留整图总览。
+- 修复多路径汇合时的节点重叠：按拓扑层次排列，同层为每张卡片预留间距；远景保留实际问题与回答摘要。
+- 地图加载轻量预览，单击节点后读取完整问答；工具输出展开后才渲染。
+- 保留可见区域渲染；固定卡片尺寸，远景保留问题与回答的纯文本摘录，省略 Markdown 和公式解析。
+- 完整问答采用最近访问缓存：最多 16 条、估算 UTF-16 内容 8 MiB；超大问答可阅读但不留缓存。
+- 地图每次最多 24 个关联会话，每个会话最多保留 120 轮预览。较长历史分段读取，可返回最近问答。已知分支按相同原生轮次 ID 和一致内容复用公共上文，不修改模型上下文。
+- 提问区增加模型选择，动态读取账户可用模型；支持继续会话、新讨论和历史分支，默认沿用会话模型。
+- 已有侧栏分支折叠、单击完整详情、原生聊天接手保护继续保留。
+
+缓存预算只约束可淘汰的数据，不等于整个客户端的内存上限；当前打开的完整问答与浏览器渲染另占内存。旧版会话服务可能需要完整历史兼容读取。升级后重新打开 Codex，让界面和后台接口一起生效。
 
 详见 [更新记录](./CHANGELOG.md)。
 
@@ -92,7 +99,7 @@ npm run build:launcher
 
 `build:launcher` 使用 Windows .NET Framework 4.x C# 编译器生成 `CodexSynapseLauncher.exe`，用于激活已有增强窗口或启动窗口。源码见 [CodexSynapseLauncher.cs](./CodexSynapseLauncher.cs)。
 
-截至 2026-10-25，本机 **62 项合成测试通过**，涵盖历史轮次分支参数、引用、审批、状态、公式与字体、视野保持、滚动条、固定节点、自动排列、侧栏折叠和原生会话接手保护。浏览器测试需要 Playwright Chromium 或本机 Chrome / Edge；无浏览器时对应项目会跳过，不能把跳过计作通过。
+截至 2026-11-04，本机 **80 项合成测试通过**，涵盖历史轮次分支参数、引用、审批、状态、公式与字体、视野保持、滚动条、固定节点、自动排列、侧栏折叠和原生会话接手保护。浏览器测试需要 Playwright Chromium 或本机 Chrome / Edge；无浏览器时对应项目会跳过，不能把跳过计作通过。
 
 原生顶栏、切换、返回会话、重载恢复和快捷方式启动已在本机验证。另已对已有画布分支验证：返回原生后占用提示消失、输入框可编辑，验证未输入或发送消息。**真实账户的模型生成与分支未进行端到端验收**，相关交互以合成后端验证。默认测试不发送真实消息、不创建真实聊天。没有宣称跨版本兼容或完整覆盖率。
 
@@ -108,3 +115,6 @@ npm run build:launcher
 
 问题可提交 [Issue](https://github.com/g1066295317-jpg/codex-synapse/issues)，请附版本及脱敏错误。欢迎 [Star 收藏](https://github.com/g1066295317-jpg/codex-synapse/stargazers)，也欢迎到 [dsh-synapse](https://github.com/liangmianya/dsh-synapse) 支持原作者。
 
+
+
+性能合成验收：100 轮地图首次只渲染 2 张可见卡片、0 次完整详情读取；重复点击使用缓存，延迟响应不会覆盖新选择。真实账户只读验收：7 个可用模型、预览和单轮详情读取成功，未加载模型会话、未发送消息。模型参数传递通过模拟测试，未进行真实模型生成验收。

@@ -1,4 +1,4 @@
-<!-- README_SYNC: source=working-tree-v0.3.6; updated=2026-10-25 -->
+<!-- README_SYNC: source=working-tree-v0.3.9; updated=2026-11-04 -->
 <p align="center"><a href="./README.md">简体中文</a> · English</p>
 
 # Codex Synapse · Conversation Canvas
@@ -13,7 +13,7 @@ An unofficial Windows Codex desktop adaptation that maps turns and historical fo
 
 If this adaptation helps, [star it for later](https://github.com/g1066295317-jpg/codex-synapse/stargazers) and consider [starring the original project](https://github.com/liangmianya/dsh-synapse/stargazers).
 
-[![Version](https://img.shields.io/badge/version-0.3.6-blue)](./package.json)
+[![Version](https://img.shields.io/badge/version-0.3.9-blue)](./package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue)](#quick-start)
 [![Node](https://img.shields.io/badge/Node.js-%3E%3D22-339933)](./package.json)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
@@ -22,11 +22,18 @@ If this adaptation helps, [star it for later](https://github.com/g1066295317-jpg
 
 *Actual interface with synthetic data and no private conversations. The Douyin URL is the user-supplied original video share link, not a verified author profile. See [ATTRIBUTION.md](./ATTRIBUTION.md).*
 
-## Changes in 0.3.6
+## Changes in 0.3.9
 
-- Canvas-created branches collapse in the native sidebar with an expand control. Independent chats with the same title remain separate.
-- Clicking a canvas node opens its complete turn in the right pane without changing zoom.
-- Returning to native chat releases idle canvas-owned sessions first. Active generation, approvals and background commands keep their connection and show an explanation.
+- Fix cyclic fork links involving inherited failed/interrupted turns; validate anchor links after sequential history and retain downstream order in defensive layout. Open new maps at the active turn and offer a reading-view button at 85% zoom, while keeping the explicit whole-map overview.
+- Fix overlapping cards where paths converge with layered placement and reserved card spacing; keep actual question/answer excerpts at low zoom.
+- Load lightweight map previews, then fetch the complete turn on click; render tool output only after expansion.
+- Keep viewport culling, with stable card dimensions and readable question/answer excerpts without Markdown/equation parsing in the zoomed-out overview.
+- Cache recently read complete turns: up to 16 entries and an estimated 8 MiB of UTF-16 content. Oversized turns remain readable without being cached.
+- Keep at most 24 related sessions per map and 120 preview turns per session, with bounded history windows and a return-to-latest action. Known ancestors reuse identical native turn IDs and content without changing model context.
+- Add an account-backed model picker for continuations, new topics and historical forks; inherit the conversation model by default.
+- Preserve sidebar branch folding, click-to-read details and safe native-chat handoff.
+
+The cache budget covers evictable data, not total client RAM; the active complete turn and browser rendering use additional memory. Older session services may require full-history fallback reads. Reopen Codex after upgrading so the renderer and backend activate together.
 
 See the [changelog](./CHANGELOG.md).
 
@@ -92,7 +99,7 @@ npm run build:launcher
 
 `build:launcher` uses the Windows .NET Framework 4.x C# compiler to create `CodexSynapseLauncher.exe`, which activates an existing enhanced window or starts one. See [CodexSynapseLauncher.cs](./CodexSynapseLauncher.cs).
 
-As of 2026-10-25, **62 synthetic tests pass locally**, covering historical-fork parameters, quotes, approvals, state, equations/fonts, viewport preservation, scrollbars, fixed nodes, automatic layout, sidebar folding and native handoff protection. Browser tests need Playwright Chromium or installed Chrome / Edge. Without a browser they are skipped; skipped tests must not count as passes.
+As of 2026-11-04, **80 synthetic tests pass locally**, covering historical-fork parameters, quotes, approvals, state, equations/fonts, viewport preservation, scrollbars, fixed nodes, automatic layout, sidebar folding and native handoff protection. Browser tests need Playwright Chromium or installed Chrome / Edge. Without a browser they are skipped; skipped tests must not count as passes.
 
 Native topbar mounting, switching, returning to sessions, reload recovery and shortcut launch were verified locally. An existing canvas branch was also checked: returning to native chat removed its ownership notice and restored an editable composer, without typing or sending a message. **Real-account model generation and fork creation have not been tested end to end**; those interactions use synthetic backends in tests. Default tests send no real messages and create no real chats. No cross-version compatibility or coverage percentage is claimed.
 
@@ -108,3 +115,6 @@ Native topbar mounting, switching, returning to sessions, reload recovery and sh
 
 Report problems via [Issues](https://github.com/g1066295317-jpg/codex-synapse/issues) with versions and redacted errors. [Star this adaptation](https://github.com/g1066295317-jpg/codex-synapse/stargazers) for later, and visit [dsh-synapse](https://github.com/liangmianya/dsh-synapse) to support the original author.
 
+
+
+Synthetic performance check: a 100-turn map initially renders 2 visible cards with no full-detail reads; repeat clicks use the cache and stale responses cannot replace the current selection. Real-account read-only checks found 7 available models and verified preview/one-turn reads with no loaded model sessions or messages sent. Model forwarding was tested synthetically, without real generation.
