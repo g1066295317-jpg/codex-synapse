@@ -26647,24 +26647,24 @@ function sliceChunks(chunks, token) {
   const startBufferIndex = token.start._bufferIndex;
   const endIndex = token.end._index;
   const endBufferIndex = token.end._bufferIndex;
-  let view;
+  let view2;
   if (startIndex === endIndex) {
-    view = [chunks[startIndex].slice(startBufferIndex, endBufferIndex)];
+    view2 = [chunks[startIndex].slice(startBufferIndex, endBufferIndex)];
   } else {
-    view = chunks.slice(startIndex, endIndex);
+    view2 = chunks.slice(startIndex, endIndex);
     if (startBufferIndex > -1) {
-      const head = view[0];
+      const head = view2[0];
       if (typeof head === "string") {
-        view[0] = head.slice(startBufferIndex);
+        view2[0] = head.slice(startBufferIndex);
       } else {
-        view.shift();
+        view2.shift();
       }
     }
     if (endBufferIndex > 0) {
-      view.push(chunks[endIndex].slice(0, endBufferIndex));
+      view2.push(chunks[endIndex].slice(0, endBufferIndex));
     }
   }
-  return view;
+  return view2;
 }
 function serializeChunks(chunks, expandTabs) {
   let index2 = -1;
@@ -27638,6 +27638,141 @@ function defaultOnError(left, right) {
   }) + ") is still open");
 }
 
+// src/math-markdown.mjs
+var escaped = (source, index2) => {
+  let n = 0;
+  while (index2 > 0 && source[--index2] === "\\") n++;
+  return n % 2 === 1;
+};
+function protectedRanges(source) {
+  const ranges = [];
+  const visit2 = (node3) => {
+    if (["code", "inlineCode", "html", "definition"].includes(node3.type) && node3.position) {
+      ranges.push({ start: node3.position.start.offset, end: node3.position.end.offset });
+      return;
+    }
+    if (node3.children) for (const child of node3.children) visit2(child);
+  };
+  visit2(fromMarkdown(source));
+  return ranges.sort((a, b) => a.start - b.start);
+}
+function scan(source) {
+  const protectedSpans = protectedRanges(source), mathSpans = [];
+  let output2 = "", i = 0, p = 0;
+  const protectedAt = (index2) => protectedSpans.find((span) => span.start <= index2 && span.end > index2);
+  while (i < source.length) {
+    while (protectedSpans[p]?.end <= i) p++;
+    const code = protectedSpans[p];
+    if (code && code.start <= i) {
+      output2 += source.slice(i, code.end);
+      i = code.end;
+      continue;
+    }
+    const slashMath = source[i] === "\\" && ["(", "["].includes(source[i + 1]) && !escaped(source, i);
+    const dollars = source[i] === "$" && !escaped(source, i);
+    if (slashMath || dollars) {
+      const display = slashMath ? source[i + 1] === "[" : source[i + 1] === "$";
+      const open2 = slashMath ? source.slice(i, i + 2) : display ? "$$" : "$";
+      const close = slashMath ? display ? "\\]" : "\\)" : open2;
+      let end = source.indexOf(close, i + open2.length);
+      while (end !== -1 && (escaped(source, end) || protectedAt(end))) end = source.indexOf(close, end + close.length);
+      if (end !== -1) {
+        const content3 = source.slice(i + open2.length, end);
+        if (content3.trim() && (display || !content3.includes("\n\n"))) {
+          const finish = end + close.length;
+          mathSpans.push({ start: i, end: finish });
+          output2 += slashMath ? display ? "\n\n$$\n" + content3.trim() + "\n$$\n\n" : "$" + content3.trim() + "$" : source.slice(i, finish);
+          i = finish;
+          continue;
+        }
+      }
+    }
+    output2 += source[i++];
+  }
+  return { text: output2, mathSpans };
+}
+function mathPreview(source = "", limit = 850) {
+  if (source.length <= limit) return source;
+  const { mathSpans } = scan(source);
+  let end = limit;
+  const math = mathSpans.find((span) => span.start < end && span.end > end);
+  if (math) end = math.end <= limit * 3 ? math.end : math.start;
+  if (!end) return "\uFF08\u5B8C\u6574\u516C\u5F0F\u8BF7\u67E5\u770B\u8BE6\u60C5\uFF09";
+  return source.slice(0, end) + "\n\n\u2026";
+}
+
+// shared/turn-preview.mjs
+var publicText = (turn, type) => (turn.items || []).filter((item) => item.type === type);
+var previewTurn = (turn) => {
+  const question = publicText(turn, "userMessage").flatMap((item) => (item.content || []).filter((part) => part.type === "text").map((part) => part.text || "")).join("\n");
+  const answer = publicText(turn, "agentMessage").map((item) => item.text || "").join("\n\n");
+  return {
+    id: turn.id,
+    status: turn.status,
+    startedAt: turn.startedAt,
+    completedAt: turn.completedAt,
+    previewOnly: true,
+    itemsView: "summary",
+    error: turn.error ? { message: String(turn.error.message || "\u672C\u8F6E\u751F\u6210\u5931\u8D25").slice(0, 1e3) } : null,
+    toolCount: turn.toolCount ?? (turn.items || []).filter((item) => !["userMessage", "agentMessage", "reasoning"].includes(item.type)).length,
+    items: [
+      { type: "userMessage", content: [{ type: "text", text: mathPreview(question, 400) }] },
+      { type: "agentMessage", text: mathPreview(answer, 850) }
+    ]
+  };
+};
+var previewHistory = (history) => {
+  if (!history?.thread) return history;
+  const { turns: _ignored, ...thread } = history.thread;
+  return { ...history, thread, turns: (history.turns || []).map(previewTurn) };
+};
+
+// server/turn-reader.mjs
+var unsupported = (error62) => /unsupported|legacy|unknown variant|method not found|does not support/i.test(error62.message);
+var findTurn = async (rpc, threadId2, turnId, itemsView) => {
+  const seen = /* @__PURE__ */ new Set();
+  let cursor2;
+  do {
+    const page = await rpc.call("thread/turns/list", { threadId: threadId2, itemsView, limit: 50, sortDirection: "desc", ...cursor2 ? { cursor: cursor2 } : {} });
+    const turn = page.data.find((item) => item.id === turnId);
+    if (turn) return turn;
+    cursor2 = page.nextCursor;
+    if (cursor2 && seen.has(cursor2)) throw new Error("\u5386\u53F2\u5206\u9875\u6E38\u6807\u91CD\u590D\uFF0C\u672A\u7EE7\u7EED\u8BFB\u53D6");
+    if (cursor2) seen.add(cursor2);
+  } while (cursor2);
+  throw new Error("\u8BE5\u8F6E\u95EE\u7B54\u5DF2\u4E0D\u5B58\u5728\uFF0C\u8BF7\u540C\u6B65\u4F1A\u8BDD\u540E\u91CD\u8BD5");
+};
+var readTurn = async (rpc, threadId2, turnId) => {
+  try {
+    const turn = await findTurn(rpc, threadId2, turnId, "notLoaded");
+    const items = [], seen = /* @__PURE__ */ new Set();
+    let cursor2;
+    do {
+      const page = await rpc.call("thread/items/list", { threadId: threadId2, turnId, limit: 100, sortDirection: "asc", ...cursor2 ? { cursor: cursor2 } : {} });
+      for (const entry of page.data) {
+        if (entry.turnId !== turnId) throw new Error("\u63A5\u53E3\u8FD4\u56DE\u4E86\u5176\u4ED6\u8F6E\u6B21\u7684\u5185\u5BB9\uFF0C\u672A\u5C55\u793A");
+        if (entry.item.type !== "reasoning") items.push(entry.item);
+      }
+      cursor2 = page.nextCursor;
+      if (cursor2 && seen.has(cursor2)) throw new Error("\u8BE6\u60C5\u5206\u9875\u6E38\u6807\u91CD\u590D\uFF0C\u672A\u7EE7\u7EED\u8BFB\u53D6");
+      if (cursor2) seen.add(cursor2);
+    } while (cursor2);
+    return { ...turn, items, itemsView: "full" };
+  } catch (error62) {
+    if (!unsupported(error62)) throw error62;
+    try {
+      const turn = await findTurn(rpc, threadId2, turnId, "full");
+      return { ...turn, items: (turn.items || []).filter((item) => item.type !== "reasoning"), itemsView: "full" };
+    } catch (fallback) {
+      if (!unsupported(fallback)) throw fallback;
+      const { thread } = await rpc.call("thread/read", { threadId: threadId2, includeTurns: true });
+      const turn = thread.turns?.find((item) => item.id === turnId);
+      if (!turn) throw new Error("\u8BE5\u8F6E\u95EE\u7B54\u5DF2\u4E0D\u5B58\u5728\uFF0C\u8BF7\u540C\u6B65\u4F1A\u8BDD\u540E\u91CD\u8BD5");
+      return { ...turn, items: (turn.items || []).filter((item) => item.type !== "reasoning"), itemsView: "full" };
+    }
+  }
+};
+
 // server/session-service.mjs
 var normalize = (value) => value.replace(/\s+/g, " ").trim();
 var threadId = (value) => {
@@ -27651,9 +27786,32 @@ var text3 = (value, max = 1e3) => {
 var SessionService = class {
   ancestry = /* @__PURE__ */ new Map();
   forking = /* @__PURE__ */ new Set();
+  modelCatalog = null;
   constructor(rpc, store) {
     this.rpc = rpc;
     this.store = store;
+  }
+  async models(refresh = false) {
+    if (!refresh && this.modelCatalog && Date.now() - this.modelCatalog.at < 3e5) return this.modelCatalog.value;
+    const data = [], seen = /* @__PURE__ */ new Set();
+    let cursor2;
+    do {
+      const page = await this.rpc.call("model/list", { limit: 100, includeHidden: false, ...cursor2 ? { cursor: cursor2 } : {} });
+      for (const model of page.data) if (!model.hidden) data.push({ id: model.id, model: model.model || model.id, displayName: model.displayName || model.model || model.id, description: model.description || "", isDefault: !!model.isDefault });
+      cursor2 = page.nextCursor;
+      if (cursor2 && seen.has(cursor2)) throw new Error("\u6A21\u578B\u5217\u8868\u5206\u9875\u6E38\u6807\u91CD\u590D");
+      if (cursor2) seen.add(cursor2);
+    } while (cursor2);
+    const value = { data };
+    this.modelCatalog = { at: Date.now(), value };
+    return value;
+  }
+  async modelOptions(model) {
+    if (model === void 0) return {};
+    const wanted = text3(model, 200), catalog = await this.models();
+    const selected = catalog.data.find((entry) => entry.model === wanted);
+    if (!selected) throw new Error("\u6240\u9009\u6A21\u578B\u5F53\u524D\u4E0D\u53EF\u7528\uFF0C\u8BF7\u5237\u65B0\u6A21\u578B\u5217\u8868\u540E\u91CD\u65B0\u9009\u62E9");
+    return { model: selected.model };
   }
   async list({ cursor: cursor2, archived = false, cwd } = {}) {
     if (typeof archived !== "boolean" || cursor2 !== void 0 && (typeof cursor2 !== "string" || cursor2.length > 4096) || cwd !== void 0 && (typeof cwd !== "string" || !cwd.trim() || cwd.length > 4096)) throw new Error("\u65E0\u6548\u4F1A\u8BDD\u5217\u8868\u53C2\u6570");
@@ -27672,23 +27830,28 @@ var SessionService = class {
     page.data = page.data.map((t) => ({ ...t, forkedFromId: t.forkedFromId || this.ancestry.get(t.id) || null, isPinned: t.section?.id === pinned?.id && !!pinned }));
     return page;
   }
-  async read(id2, cursor2) {
+  async read(id2, cursor2, view2 = "full") {
     threadId(id2);
     if (cursor2 !== void 0 && (typeof cursor2 !== "string" || cursor2.length > 4096)) throw new Error("\u65E0\u6548\u5386\u53F2\u5206\u9875\u6E38\u6807");
     const { thread } = await this.rpc.call("thread/read", { threadId: id2, includeTurns: false });
     let page, legacy = false;
     try {
-      page = await this.rpc.call("thread/turns/list", { threadId: id2, limit: 12, itemsView: "full", sortDirection: "desc", ...cursor2 ? { cursor: cursor2 } : {} });
+      page = await this.rpc.call("thread/turns/list", { threadId: id2, limit: 12, itemsView: view2 === "preview" ? "summary" : "full", sortDirection: "desc", ...cursor2 ? { cursor: cursor2 } : {} });
     } catch (error62) {
       if (!/unsupported|legacy|unknown variant/i.test(error62.message)) throw error62;
-      const result = await this.rpc.call("thread/read", { threadId: id2, includeTurns: true });
+      const result2 = await this.rpc.call("thread/read", { threadId: id2, includeTurns: true });
       if (cursor2) throw new Error("\u6B64 Codex \u7248\u672C\u4E0D\u652F\u6301\u5386\u53F2\u5206\u9875");
-      page = { data: result.thread.turns || [], nextCursor: null };
+      page = { data: result2.thread.turns || [], nextCursor: null };
       legacy = true;
     }
     const groups = await this.sections();
     const pinned = groups.data.find((s) => s.name === "Pinned");
-    return { thread: { ...thread, isPinned: !!pinned && thread.section?.id === pinned.id }, turns: legacy ? [...page.data] : [...page.data].reverse(), nextCursor: page.nextCursor };
+    const turns = legacy ? [...page.data] : [...page.data].reverse();
+    const result = { thread: { ...thread, isPinned: !!pinned && thread.section?.id === pinned.id }, turns, nextCursor: page.nextCursor, ...!cursor2 ? { latestTurnId: turns.at(-1)?.id } : {} };
+    return view2 === "preview" ? previewHistory(result) : result;
+  }
+  async readTurn(id2, turnId) {
+    return readTurn(this.rpc, threadId(id2), threadId(turnId));
   }
   async rename(id2, name) {
     return this.rpc.call("thread/name/set", { threadId: threadId(id2), name: text3(name, 200) });
@@ -27713,11 +27876,12 @@ var SessionService = class {
     if (typeof restore !== "boolean") throw new Error("\u65E0\u6548\u5F52\u6863\u53C2\u6570");
     return this.rpc.call(restore ? "thread/unarchive" : "thread/archive", { threadId: threadId(id2) });
   }
-  async fork({ id: id2, turnId, quote = "", question = "", name, send = false }) {
+  async fork({ id: id2, turnId, quote = "", question = "", name, send = false, model }) {
     threadId(id2);
     if (turnId !== void 0) threadId(turnId);
     if (typeof quote !== "string" || typeof question !== "string" || typeof send !== "boolean" || quote.length > 16e3 || question.length > 16e3) throw new Error("\u5F15\u7528\u6216\u8FFD\u95EE\u683C\u5F0F\u4E0D\u6B63\u786E\u6216\u8FC7\u957F");
     if (name !== void 0) text3(name, 200);
+    const modelOptions = await this.modelOptions(model);
     if (send && !question.trim()) throw new Error("\u8BF7\u8F93\u5165\u8FFD\u95EE\u5185\u5BB9");
     if (this.forking.has(id2)) throw new Error("\u6B63\u5728\u521B\u5EFA\u5206\u652F\uFF0C\u8BF7\u7A0D\u5019");
     this.forking.add(id2);
@@ -27759,7 +27923,7 @@ ${quote}
 \u6211\u7684\u8FFD\u95EE\uFF1A
 ${question}` : question;
         try {
-          const response = await this.rpc.call("turn/start", { threadId: thread.id, input: [{ type: "text", text: prompt }] });
+          const response = await this.rpc.call("turn/start", { threadId: thread.id, ...modelOptions, input: [{ type: "text", text: prompt }] });
           turn = response.turn;
           accepted = true;
           try {
@@ -27839,8 +28003,8 @@ var WorkspaceService = class {
       item.text += p.delta;
     }
   }
-  async read(id2, cursor2) {
-    const result = await this.service.read(id2, cursor2), live = this.live.get(id2);
+  async read(id2, cursor2, view2 = "full") {
+    const result = await this.service.read(id2, cursor2, view2), live = this.live.get(id2);
     if (!cursor2 && live) {
       const i = result.turns.findIndex((t) => t.id === live.id), persisted = result.turns[i];
       if (busyTurn(live)) {
@@ -27850,26 +28014,32 @@ var WorkspaceService = class {
       } else if (i < 0) result.turns.push(live);
       else this.live.delete(id2);
     }
-    return { ...result, warning: this.errors.get(id2) || null, approvals: this.listApprovals(id2) };
+    const history = { ...result, ...!cursor2 ? { latestTurnId: result.turns.at(-1)?.id } : {}, warning: this.errors.get(id2) || null, approvals: this.listApprovals(id2) };
+    return view2 === "preview" ? previewHistory(history) : history;
   }
-  async snapshot(id2) {
+  async readTurn(id2, turnId) {
+    const live = this.live.get(id2);
+    if (live?.id === turnId && busyTurn(live)) return { turn: { ...live, items: (live.items || []).filter((item) => item.type !== "reasoning") }, threadId: id2 };
+    return { turn: await this.service.readTurn(id2, turnId), threadId: id2 };
+  }
+  async snapshot(id2, view2 = "full") {
     await this.store.load();
     const page = await this.service.list(), threads = [...page.data];
     let selectedId = id2 ?? null, selected = null;
     if (id2 !== void 0) {
-      selected = await this.read(id2);
+      selected = await this.read(id2, void 0, view2);
     } else {
       const savedId = this.store.data.view?.selectedId;
       if (validId(savedId)) {
         try {
-          selected = await this.read(savedId);
+          selected = await this.read(savedId, void 0, view2);
           selectedId = savedId;
         } catch {
         }
       }
       if (!selected && threads.length) {
         selectedId = threads[0].id;
-        selected = await this.read(selectedId);
+        selected = await this.read(selectedId, void 0, view2);
       }
     }
     if (selected && !threads.some((t) => t.id === selectedId)) threads.unshift(selected.thread);
@@ -27889,12 +28059,12 @@ var WorkspaceService = class {
     const histories = {};
     await Promise.all([...family].slice(0, 24).map(async (key) => {
       try {
-        histories[key] = key === selectedId ? selected : await this.read(key);
+        histories[key] = key === selectedId ? selected : await this.read(key, void 0, view2);
       } catch (e) {
         histories[key] = { error: e.message };
       }
     }));
-    return { threads, nextCursor: page.nextCursor, histories, layout: this.store.data, selectedId, familyTruncated: family.size > 24 };
+    return { threads, nextCursor: page.nextCursor, histories, layout: this.store.data, selectedId, familyTruncated: family.size > 24, ...view2 === "preview" ? { previewProtocol: 1 } : {} };
   }
   remember(result) {
     if (result.turn && result.thread?.id) {
@@ -27914,7 +28084,7 @@ var WorkspaceService = class {
       this.sending.delete(key);
     }
   }
-  async send({ id: id2, question, turnId, quote = "", branch = false, cwd }) {
+  async send({ id: id2, question, turnId, quote = "", branch = false, cwd, model }) {
     if (typeof question !== "string" || !question.trim() || question.length > 16e3) throw new Error("\u8BF7\u8F93\u5165 1\u201316000 \u5B57\u7684\u95EE\u9898");
     if (id2 !== void 0 && !validId(id2) || turnId !== void 0 && !validId(turnId) || typeof branch !== "boolean" || typeof quote !== "string" || quote.length > 16e3) throw new Error("\u8FFD\u95EE\u53C2\u6570\u65E0\u6548");
     if (!branch && (turnId || quote)) throw new Error("\u5386\u53F2\u8F6E\u6B21\u8FFD\u95EE\u9700\u8981\u521B\u5EFA\u5206\u652F");
@@ -27922,9 +28092,10 @@ var WorkspaceService = class {
     if (this.sending.has(key)) throw new Error("\u6B63\u5728\u63D0\u4EA4\uFF0C\u8BF7\u7A0D\u5019");
     this.sending.add(key);
     try {
+      const modelOptions = model === void 0 ? {} : await this.service.modelOptions(model);
       if (branch) {
         if (!id2 || !turnId) throw new Error("\u8BF7\u9009\u62E9\u5206\u652F\u7684\u8D77\u70B9");
-        return this.remember(await this.service.fork({ id: id2, turnId, quote, question, send: true }));
+        return this.remember(await this.service.fork({ id: id2, turnId, quote, question, send: true, ...modelOptions }));
       }
       if (id2) {
         const history = await this.read(id2);
@@ -27932,7 +28103,7 @@ var WorkspaceService = class {
         const resumed = await this.rpc.call("thread/resume", { threadId: id2, excludeTurns: true });
         if (busyThread(resumed.thread)) throw new Error("\u672C\u8F6E\u4ECD\u5728\u751F\u6210\uFF0C\u8BF7\u7B49\u5F85\u6216\u505C\u6B62\u540E\u518D\u53D1\u9001");
       } else {
-        const created = await this.rpc.call("thread/start", { ...cwd ? { cwd } : {}, threadSource: "synapse" });
+        const created = await this.rpc.call("thread/start", { ...cwd ? { cwd } : {}, ...modelOptions, threadSource: "synapse" });
         id2 = created.thread.id;
         try {
           await this.service.rename(id2, question.trim().slice(0, 42));
@@ -27940,7 +28111,7 @@ var WorkspaceService = class {
         }
       }
       this.errors.delete(id2);
-      const { turn } = await this.rpc.call("turn/start", { threadId: id2, input: [{ type: "text", text: question.trim() }] });
+      const { turn } = await this.rpc.call("turn/start", { threadId: id2, ...modelOptions, input: [{ type: "text", text: question.trim() }] });
       return this.remember({ thread: { id: id2 }, turn, accepted: true });
     } finally {
       this.sending.delete(key);
@@ -28001,13 +28172,16 @@ var releaseForNative = async (rpc, workspace, id2) => {
 var id = external_exports.string().regex(/^[a-zA-Z0-9_-]{1,100}$/);
 var cursor = external_exports.string().min(1).max(4096).optional();
 var text4 = (max) => external_exports.string().trim().min(1).max(max);
+var view = external_exports.enum(["full", "preview"]).optional();
 var layouts = external_exports.object({ nodes: external_exports.record(external_exports.string().max(300), external_exports.object({ x: external_exports.number().finite(), y: external_exports.number().finite() }).strict()).optional(), view: external_exports.record(external_exports.string().max(300), external_exports.unknown()).optional() }).strict();
 var schemas = {
   open_session_map: external_exports.object({ id: id.optional() }).strict(),
-  workspace_snapshot: external_exports.object({ id: id.optional() }).strict(),
-  read_session: external_exports.object({ id, cursor }).strict(),
+  workspace_snapshot: external_exports.object({ id: id.optional(), view }).strict(),
+  read_session: external_exports.object({ id, cursor, view }).strict(),
+  read_turn: external_exports.object({ id, turnId: id }).strict(),
   list_sessions: external_exports.object({ cursor, archived: external_exports.boolean().optional(), cwd: text4(4096).optional() }).strict(),
-  send_question: external_exports.object({ id: id.optional(), question: text4(16e3), turnId: id.optional(), quote: external_exports.string().max(16e3).optional(), branch: external_exports.boolean().optional(), cwd: text4(4096).optional() }).strict(),
+  send_question: external_exports.object({ id: id.optional(), question: text4(16e3), turnId: id.optional(), quote: external_exports.string().max(16e3).optional(), branch: external_exports.boolean().optional(), cwd: text4(4096).optional(), model: text4(200).optional() }).strict(),
+  list_models: external_exports.object({ refresh: external_exports.boolean().optional() }).strict(),
   stop_turn: external_exports.object({ id, turnId: id }).strict(),
   save_layout: layouts,
   fork_session: external_exports.object({ id, turnId: id.optional(), quote: external_exports.string().max(16e3).optional(), question: external_exports.string().max(16e3).optional(), name: text4(200).optional(), send: external_exports.boolean().default(false) }).strict(),
@@ -28092,10 +28266,16 @@ var NativeBackend = class extends EventEmitter4 {
         result = { selectedId: a.id ?? null, version: "0.3.0" };
         break;
       case "workspace_snapshot":
-        result = await this.workspace.snapshot(a.id);
+        result = await this.workspace.snapshot(a.id, a.view);
         break;
       case "read_session":
-        result = await this.workspace.read(a.id, a.cursor);
+        result = await this.workspace.read(a.id, a.cursor, a.view);
+        break;
+      case "read_turn":
+        result = await this.workspace.readTurn(a.id, a.turnId);
+        break;
+      case "list_models":
+        result = await this.service.models(a.refresh);
         break;
       case "list_sessions":
         result = await this.service.list(a);
@@ -28187,13 +28367,20 @@ var DemoBackend = class extends EventEmitter5 {
             }
           }
         }
-        return { threads: threads(), histories: Object.fromEntries([...family].filter((id2) => this.histories[id2]).map((id2) => [id2, structuredClone(this.histories[id2])])), layout: structuredClone(this.layout), selectedId, nextCursor: null };
+        return { threads: threads(), histories: Object.fromEntries([...family].filter((id2) => this.histories[id2]).map((id2) => [id2, args.view === "preview" ? previewHistory(this.histories[id2]) : structuredClone(this.histories[id2])])), layout: structuredClone(this.layout), selectedId, nextCursor: null };
       }
       case "read_session":
         if (!this.histories[args.id]) throw new Error("\u6F14\u793A\u4F1A\u8BDD\u4E0D\u5B58\u5728");
-        return structuredClone(this.histories[args.id]);
+        return args.view === "preview" ? previewHistory(this.histories[args.id]) : structuredClone(this.histories[args.id]);
+      case "read_turn": {
+        const turn = this.histories[args.id]?.turns.find((turn2) => turn2.id === args.turnId);
+        if (!turn) throw new Error("\u6F14\u793A\u95EE\u7B54\u4E0D\u5B58\u5728");
+        return { threadId: args.id, turn: structuredClone(turn) };
+      }
       case "list_sessions":
         return { data: threads(), nextCursor: null };
+      case "list_models":
+        return { data: [{ id: "demo-model", model: "demo-model", displayName: "\u5408\u6210\u6F14\u793A\u6A21\u578B", isDefault: true }] };
       case "save_canvas":
       case "save_layout":
         this.layout = { ...this.layout, nodes: { ...this.layout.nodes, ...args.nodes }, view: { ...this.layout.view, ...args.view } };
@@ -28261,7 +28448,7 @@ var shuttingDown = false;
 var clients = /* @__PURE__ */ new Map();
 var binding = "__synapse_" + randomBytes(12).toString("hex");
 var channel = randomBytes(24).toString("hex");
-var methods = /* @__PURE__ */ new Set(["workspace_snapshot", "read_session", "list_sessions", "send_question", "stop_generation", "stop_turn", "save_canvas", "save_layout", "fork_session", "rename_session", "move_session", "archive_session", "list_sections", "create_section", "list_approvals", "respond_approval"]);
+var methods = /* @__PURE__ */ new Set(["workspace_snapshot", "read_session", "read_turn", "list_models", "list_sessions", "send_question", "stop_generation", "stop_turn", "save_canvas", "save_layout", "fork_session", "rename_session", "move_session", "archive_session", "list_sections", "create_section", "list_approvals", "respond_approval"]);
 var mutations = /* @__PURE__ */ new Set(["send_question", "stop_generation", "stop_turn", "fork_session", "rename_session", "move_session", "archive_session", "create_section", "respond_approval"]);
 var deliver = (client, contextId, payload) => client.evaluate(`window.__codexSynapse?.deliver(${JSON.stringify({ channel, ...payload })})`, contextId);
 var broadcast = (event) => {
