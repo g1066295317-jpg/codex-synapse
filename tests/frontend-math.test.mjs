@@ -62,7 +62,7 @@ test('math renders with loaded local fonts inside the native ShadowRoot at narro
    const thread={id:'synthetic-math',name:'ISTA · 公式渲染验证',cwd:'D:\\合成公式'};
    const history={thread,turns:[{id:'math-turn',status:'completed',items:[{type:'userMessage',content:[{type:'text',text:'如何理解 $\\Phi x=y$ 与 ISTA？'}]},{type:'agentMessage',text}]}],nextCursor:null};
    const snapshot={threads:[thread],histories:{[thread.id]:history},selectedId:thread.id,layout:{nodes:{},branches:{},view:{detail:true}},nextCursor:null};
-   const host={getContext:()=>({testing:true,readOnly:true,threadId:thread.id,canvasVisible:true}),nativeChat:async()=>{},call:async name=>{if(name==='workspace_snapshot')return snapshot;if(name==='read_session')return history;if(name==='list_approvals')return{approvals:[]};throw new Error('Synthetic math test cannot mutate chats');}};
+   const host={getContext:()=>({testing:true,readOnly:true,threadId:thread.id,canvasVisible:true}),nativeChat:async()=>{},call:async(name,args={})=>{if(name==='read_turn')return{threadId:args.id,turn:history.turns.find(turn=>turn.id===args.turnId)};if(name==='workspace_snapshot')return snapshot;if(name==='read_session')return history;if(name==='list_approvals')return{approvals:[]};throw new Error('Synthetic math test cannot mutate chats');}};
    window.SynapseCanvas.mount(surface,host);window.mathTestSurface=surface;
   },{css:bundle.outputFiles.find(f=>f.path.endsWith('.css')).text,text:sample});
   await page.locator('.detail-pane .katex').first().waitFor();

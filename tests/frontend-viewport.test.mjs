@@ -27,6 +27,7 @@ test('fork selection preserves the user camera; only explicit fit changes zoom',
    const host={getContext:()=>context,onContextChange:fn=>(listeners.push(fn),()=>listeners.splice(listeners.indexOf(fn),1)),onEvent:()=>()=>{},setActiveThread:id=>{context={...context,threadId:id};},nativeChat:async()=>{},call:async(name,args={})=>{
     if(name==='workspace_snapshot')return structuredClone(data);
     if(name==='read_session')return structuredClone(data.histories[args.id]);
+    if(name==='read_turn')return{threadId:args.id,turn:structuredClone(data.histories[args.id].turns.find(turn=>turn.id===args.turnId))};
     if(name==='list_approvals')return{approvals:[]};
     if(name==='save_layout'){data.layout={...data.layout,nodes:{...data.layout.nodes,...args.nodes},view:{...data.layout.view,...args.view}};return structuredClone(data.layout);}
     throw new Error('Camera test cannot send or mutate chats');
@@ -50,6 +51,7 @@ test('fork selection preserves the user camera; only explicit fit changes zoom',
   const area=await page.locator('.canvas-view').boundingBox();
   await page.mouse.move(area.x+area.width-20,area.y+300);await page.mouse.down();await page.mouse.move(area.x+area.width-20,area.y+80,{steps:8});await page.mouse.up();
   const panned=await viewport(page);assert.ok(panned.y<initial.y);assert.ok(Math.abs(panned.zoom-initial.zoom)<.0001);
+  await child.locator('.node-heading > span').click();await page.getByRole('button',{name:'定位当前问答',exact:true}).click();await page.waitForTimeout(350);
   await child.getByRole('button',{name:'分支',exact:true}).click();await page.getByRole('textbox',{name:'从这一轮探索另一个方向…'}).waitFor();await page.waitForTimeout(300);
   const detail=await viewport(page);assert.ok(Math.abs(initial.zoom-detail.zoom)<.0001,'opening branch detail must not change zoom');
   await page.getByRole('button',{name:'关闭详情',exact:true}).click();

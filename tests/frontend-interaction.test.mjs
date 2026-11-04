@@ -36,6 +36,8 @@ test('synthetic host supports follow up, historical fork, quote, approval, nativ
           calls.push({name, args: structuredClone(args)});
           if (name === 'workspace_snapshot') return structuredClone(data);
           if (name === 'read_session') return structuredClone(data.histories[args.id]);
+          if (name === 'read_turn') return {threadId: args.id, turn: structuredClone(data.histories[args.id].turns.find(turn => turn.id === args.turnId))};
+          if (name === 'list_models') return {data:[{model:'synthetic-first',displayName:'合成模型一',isDefault:true},{model:'synthetic-second',displayName:'合成模型二'}]};
           if (name === 'list_approvals') return {approvals: structuredClone(approvals.filter(item => item.threadId === args.id))};
           if (name === 'save_layout') {data.layout = {...data.layout, nodes: {...data.layout.nodes, ...args.nodes}, view: {...data.layout.view, ...args.view}}; return structuredClone(data.layout);}
           if (name === 'send_question') {
@@ -66,20 +68,25 @@ test('synthetic host supports follow up, historical fork, quote, approval, nativ
       window.SynapseCanvas.mount(document.getElementById('fixture'), host);
     });
     await page.getByRole('textbox', {name: '继续当前会话…'}).waitFor();
+    await page.locator('select[aria-label="提问模型"] option[value="synthetic-second"]').waitFor({state:'attached'});
+    await page.getByRole('combobox',{name:'提问模型'}).selectOption('synthetic-second');
     assert.ok(await page.locator('.react-flow__minimap').count());
     await page.getByRole('textbox', {name: '继续当前会话…'}).fill('模拟继续问题');
     await page.getByRole('button', {name: '发送问题', exact: true}).click();
     await page.waitForFunction(() => window.fixture.calls.some(call => call.name === 'send_question'));
     const continued = await page.evaluate(() => window.fixture.calls.find(call => call.name === 'send_question').args);
     assert.equal(continued.id, 'mock-main'); assert.equal(continued.branch, false); assert.equal(continued.question, '模拟继续问题');
+    assert.equal(continued.model,'synthetic-second');
     assert.ok(!Object.hasOwn(continued, 'turnId')); assert.ok(!Object.hasOwn(continued, 'quote'));
 
+    await page.getByRole('button',{name:'适应画布',exact:true}).click();await page.waitForTimeout(350);
     await page.locator('.react-flow__node').filter({has: page.locator('[aria-label="问答节点 1"]')}).getByRole('button', {name: '查看完整', exact: true}).click();
     await page.getByRole('textbox', {name: '从这一轮探索另一个方向…'}).fill('模拟历史分支');
     await page.getByRole('button', {name: '发送分支追问', exact: true}).click();
     await page.waitForFunction(() => window.fixture.calls.filter(call => call.name === 'send_question').length === 2);
     const branched = await page.evaluate(() => window.fixture.calls.filter(call => call.name === 'send_question')[1].args);
     assert.equal(branched.id, 'mock-main'); assert.equal(branched.turnId, 't1'); assert.equal(branched.branch, true);
+    assert.equal(branched.model,'synthetic-second');
     await page.waitForFunction(() => document.querySelector('.detail-pane .answer-text')?.textContent.includes('合成回复'));
 
     await page.evaluate(() => {

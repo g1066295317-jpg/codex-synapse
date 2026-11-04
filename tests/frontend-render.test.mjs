@@ -35,7 +35,8 @@ test('synthetic detail rendering includes public messages and tools but no reaso
   const html = module.exports.render({id: 'fixture', status: 'completed', items: [{type: 'userMessage', content: [{type: 'text', text: '保留原问题'}]}, {type: 'agentMessage', text: '**原回答**\n\n`代码`'}, {type: 'reasoning', text: 'PRIVATE_SYNTHETIC_REASONING', summary: ['PRIVATE_SYNTHETIC_SUMMARY']}, {type: 'commandExecution', command: 'echo synthetic', aggregatedOutput: 'PUBLIC_SYNTHETIC_OUTPUT'}]});
   assert.ok(html.includes('保留原问题'));
   assert.ok(html.includes('<strong>原回答</strong>'));
-  assert.ok(html.includes('echo synthetic'));
-  assert.ok(html.includes('PUBLIC_SYNTHETIC_OUTPUT'));
+  assert.ok(html.includes('工具过程'));
+  assert.ok(!html.includes('echo synthetic'), 'closed tools must not render their payload');
+  assert.ok(!html.includes('PUBLIC_SYNTHETIC_OUTPUT'));
   assert.ok(!html.includes('PRIVATE_SYNTHETIC_'));
 });
