@@ -8,6 +8,7 @@ import './katex-scoped.css';
 import {katexFontFaces} from './katex-fonts.mjs';
 
 const roots = new WeakMap();
+export const version = '0.3.9';
 const fontSheets = new WeakMap();
 
 export function mount(container, host) {

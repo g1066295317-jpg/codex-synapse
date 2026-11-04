@@ -1,8 +1,8 @@
 import React from 'react';
 import {ArrowUp, GitBranch, Square, X} from 'lucide-react';
 
-export default function Composer({value, onChange, onSend, busy, generating, onStop, branch, onBranch, historical, quote, onQuoteChange, onClearQuote, disabled, label = '继续当前思路…'}) {
-  const canSend = !busy && !generating && !disabled && !!value.trim();
+export default function Composer({value, onChange, onSend, busy, generating, onStop, branch, onBranch, historical, quote, onQuoteChange, onClearQuote, disabled, sendDisabled = false, label = '继续当前思路…'}) {
+  const canSend = !busy && !generating && !disabled && !sendDisabled && !!value.trim();
   return <form className="composer nodrag nowheel" onSubmit={event => {event.preventDefault(); if (canSend) onSend();}}>
     {quote && <div className="quoted-draft"><div><span>原文引用 · 可删减</span><button type="button" aria-label="取消引用" onClick={onClearQuote}><X size={13}/></button></div><textarea aria-label="引用原文" value={quote} rows={2} maxLength={16000} onChange={event => onQuoteChange?.(event.target.value)}/></div>}
     <textarea className="question-input" aria-label={label} placeholder={disabled ? '当前为只读模式' : label} value={value} disabled={disabled} maxLength={16000} onChange={event => onChange(event.target.value)} onKeyDown={event => {

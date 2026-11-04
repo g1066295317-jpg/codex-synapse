@@ -34,7 +34,7 @@ export function questionTarget(graph, key, selectedId, histories) {
   const threadId = selectedPath.includes(key) ? selectedId : record.threadId;
   const path = graph.paths[threadId] || [];
   const index = path.indexOf(key);
-  return {threadId, turnId: histories[threadId]?.turns?.[index]?.id || record.turn.id, historical: path.at(-1) !== key};
+  return {threadId, turnId: record.turn.id, historical: histories[threadId]?.latestTurnId ? histories[threadId].latestTurnId !== record.turn.id : path.at(-1) !== key};
 }
 
 export function normalizeDraft(draft = {}, historical = false) {

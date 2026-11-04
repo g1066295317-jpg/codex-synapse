@@ -77,7 +77,20 @@
 .synapse-native-root .turn-card {width: 370px; border: 1px solid #deddd4; border-radius: 11px; background: #fffefa; box-shadow: 0 3px 11px #4a493209; overflow: hidden; cursor: default; transition: border-color .14s, box-shadow .14s;}
 .synapse-native-root .turn-card.on-path {border-color: #c7cec0;}
 .synapse-native-root .turn-card.selected {border-color: #8b9a82; box-shadow: 0 0 0 2px #a9b69e2b, 0 5px 15px #4a493210;}
-.synapse-native-root .turn-card {display:flex;flex-direction:column;max-height:440px;}
+.synapse-native-root .turn-card {display:flex;flex-direction:column;height:400px;max-height:400px;}
+.synapse-native-root .turn-card > .node-actions {margin-top:auto;}
+.synapse-native-root .tool-preview {padding:6px 17px;color:var(--synapse-muted);font-size:10px;}
+.synapse-native-root .node-overview {flex:1;min-height:0;display:flex;flex-direction:column;align-items:stretch;gap:9px;padding:19px 20px;color:var(--synapse-text);overflow:hidden;}
+.synapse-native-root .node-overview strong {font-size:23px;line-height:1.45;font-weight:550;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;}
+.synapse-native-root .node-overview p {font-size:19px;line-height:1.5;color:#687062;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;}
+.synapse-native-root .node-overview .speaker {font-size:13px;}
+.synapse-native-root .node-overview small {font-size:12px;color:var(--synapse-muted);margin-top:auto;}
+.synapse-native-root .reader-loading, .synapse-native-root .reader-error {padding:22px;color:var(--synapse-muted);}
+.synapse-native-root .reader-loading {display:flex;align-items:center;gap:9px;}
+.synapse-native-root .model-picker {display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding:4px 4px 9px;font-size:11px;color:var(--synapse-muted);}
+.synapse-native-root .model-picker label {display:flex;align-items:center;gap:8px;flex:1;min-width:0;}
+.synapse-native-root .model-picker select {min-width:0;max-width:100%;flex:1;padding:5px 22px 5px 7px;background:var(--synapse-panel);border:1px solid var(--synapse-line);border-radius:6px;}
+.synapse-native-root .model-picker small {width:100%;font-size:10px;color:#a17a50;white-space:normal;}
 .synapse-native-root .turn-card > .node-heading, .synapse-native-root .turn-card > .question-text, .synapse-native-root .turn-card > .node-actions, .synapse-native-root .turn-card > .folded-hint {flex-shrink:0;}
 .synapse-native-root .turn-card > .answer-text {min-height:0;overflow:hidden;flex-shrink:1;}
 .synapse-native-root .node-heading {display: flex; align-items: center; height: 39px; gap: 8px; padding: 0 12px 0 16px; border-bottom: 1px solid #eeece5; background: #faf9f4;}

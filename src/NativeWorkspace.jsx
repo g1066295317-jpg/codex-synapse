@@ -1,13 +1,17 @@
 import React, {useCallback, useEffect, useId, useMemo, useRef, useState} from 'react';
 import {ReactFlow, Background, Controls, MiniMap, useNodesInitialized, useNodesState} from '@xyflow/react';
 import {ArrowUpRight, Check, ChevronDown, ChevronLeft, ChevronRight, FileText, Focus, Folder, GitBranch, LoaderCircle, LocateFixed, Network, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, Search, X} from 'lucide-react';
-import TurnNode, {TurnBody} from './TurnNode.jsx';
+import TurnNode from './TurnNode.jsx';
+import TurnDetail from './TurnDetail.jsx';
 import Composer from './Composer.jsx';
 import ApprovalPanel from './ApprovalPanel.jsx';
 import CanvasScrollbars from './CanvasScrollbars.jsx';
 import {turnGraph, descendants, titleOf} from './turn-graph.mjs';
-import {groupThreads, isRunning, mergeHistory, mergeThreads, normalizeDraft, questionTarget} from './native-state.mjs';
+import {groupThreads, isRunning, mergeThreads, normalizeDraft, questionTarget} from './native-state.mjs';
 import {installNativeSidebar} from '../runtime/native-sidebar.mjs';
+import {mergePreviewHistories} from './preview-history.mjs';
+import {useTurnDetail} from './use-turn-detail.mjs';
+import ModelPicker, {useModelCatalog} from './ModelPicker.jsx';
 
 const nodeTypes = {turn: TurnNode};
 const emptySnapshot = {threads: [], histories: {}, layout: {nodes: {}, branches: {}, view: {}}};
@@ -24,6 +28,7 @@ export default function NativeWorkspace({host}) {
   const [newTopic, setNewTopic] = useState(false);
   const [drafts, setDrafts] = useState({});
   const [rootDraft, setRootDraft] = useState('');
+  const [model, setModel] = useState('');
   const [folded, setFolded] = useState({});
   const [closedGroups, setClosedGroups] = useState({});
   const [loading, setLoading] = useState(true);
@@ -65,6 +70,19 @@ export default function NativeWorkspace({host}) {
 
   const fail = useCallback(failure => {if (mounted.current) setError(failure?.message || String(failure));}, []);
   const call = useCallback((name, args = {}) => Promise.resolve().then(() => host.call(name, args)), [host]);
+  const previewCall = useCallback(async (name, args = {}) => {
+    let result;
+    try {result = await call(name, {...args, view: 'preview'});}
+    catch (failure) {
+      if (!/参数无效.*view|unsupported.*view|unknown.*view/i.test(failure.message)) throw failure;
+      result = await call(name, args);
+    }
+    if (name === 'read_session' && !args.cursor && !result.latestTurnId) result = {...result, latestTurnId: result.turns?.at(-1)?.id};
+    return result;
+  }, [call]);
+  const turnDetail = useTurnDetail({call, record: currentRecord, threadId: target?.threadId || selected, updatedAt: snapshot.histories[currentRecord?.threadId]?.thread?.updatedAt, enabled: detail && !newTopic && context.canvasVisible !== false});
+  const catalog = useModelCatalog(call, context.canvasVisible !== false && (detail || newTopic));
+  const modelUnavailable = !!model && !catalog.data.some(entry => entry.model === model);
 
   const save = useCallback(patch => {
     if (!state.current.canSave) return;
@@ -78,21 +96,20 @@ export default function NativeWorkspace({host}) {
     }, 650);
   }, [call, fail]);
 
-  const refresh = useCallback(async id => {
+  const refresh = useCallback(async (id, resetHistory = false) => {
     const sequence = ++request.current;
     setLoading(true);
     try {
-      const data = await call('workspace_snapshot', id ? {id} : {});
+      const data = await previewCall('workspace_snapshot', id ? {id} : {});
       if (!mounted.current || sequence !== request.current) return;
       setSnapshot(previous => {
-        const histories = {};
-        for (const [key, history] of Object.entries(data.histories || {})) histories[key] = mergeHistory(previous.histories[key], history);
+        const histories = mergePreviewHistories(previous.histories, data.histories || {}, data.layout?.branches, {resetId: resetHistory ? id : undefined});
         return {...previous, ...data, nextCursor: previous.listPagesLoaded ? previous.nextCursor : data.nextCursor, threads: mergeThreads(previous.threads, data.threads || []), histories, layout: {...previous.layout, ...data.layout, nodes: {...data.layout?.nodes, ...previous.layout.nodes}, view: {...data.layout?.view, ...previous.layout.view}}};
       });
       if (!hydrated.current) {
         hydrated.current = true;
         const view = data.layout?.view || {};
-        setDrafts(view.drafts || {}); setFolded(view.folded || {}); setRootDraft(view.rootDraft || '');
+        setDrafts(view.drafts || {}); setFolded(view.folded || {}); setRootDraft(view.rootDraft || ''); setModel(typeof view.model === 'string' ? view.model : '');
         setSidebar(view.sidebar !== false && (workspaceElement.current?.clientWidth || 1200) >= 880); setDetail(!!view.detail); setActive(view.activeId || null);
         initialViewport.current = view.viewport || null;
       }
@@ -100,27 +117,27 @@ export default function NativeWorkspace({host}) {
       if (chosen) {
         setSelected(chosen); host.setActiveThread?.(chosen);
         if (!data.histories?.[chosen]?.thread) {
-          const history = await call('read_session', {id: chosen});
-          if (mounted.current && sequence === request.current) setSnapshot(previous => ({...previous, histories: {...previous.histories, [chosen]: mergeHistory(previous.histories[chosen], history)}}));
+          const history = await previewCall('read_session', {id: chosen});
+          if (mounted.current && sequence === request.current) setSnapshot(previous => ({...previous, histories: mergePreviewHistories(previous.histories, {...previous.histories, [chosen]: history}, previous.layout.branches)}));
         }
       }
     } catch (failure) {if (sequence === request.current) fail(failure);} finally {if (mounted.current && sequence === request.current) setLoading(false);}
-  }, [call, fail, host]);
+  }, [previewCall, fail, host]);
 
   const readCurrent = useCallback(async id => {
     if (!id) return;
     const sequence = ++readSequence.current;
     const generation = request.current;
-    const results = await Promise.allSettled([call('read_session', {id}), call('list_approvals', {id})]);
+    const results = await Promise.allSettled([previewCall('read_session', {id}), call('list_approvals', {id})]);
     if (!mounted.current || state.current.selected !== id || sequence !== readSequence.current || generation !== request.current) return;
     if (results[0].status === 'fulfilled') {
       const history = results[0].value;
-      setSnapshot(previous => ({...previous, histories: {...previous.histories, [id]: mergeHistory(previous.histories[id], history)}}));
+      setSnapshot(previous => ({...previous, histories: mergePreviewHistories(previous.histories, {...previous.histories, [id]: history}, previous.layout.branches)}));
       if (history.approvals) setApprovals(history.approvals);
     }
     if (results[1].status === 'fulfilled') setApprovals(results[1].value.approvals || []);
     if (results.every(result => result.status === 'rejected')) fail(results[0].reason);
-  }, [call, fail]);
+  }, [call, previewCall, fail]);
 
   useEffect(() => {
     mounted.current = true;
@@ -171,7 +188,7 @@ export default function NativeWorkspace({host}) {
     if (!nodesInitialized || !activeKey || !flow.current.getNode(activeKey)?.measured?.width) return;
     initialViewApplied.current = true;
     const narrow = (workspaceElement.current?.clientWidth || 1200) < 850;
-    flow.current.fitView({...(narrow ? {nodes: [{id: activeKey}]} : {}), padding: narrow ? .12 : .14, maxZoom: narrow ? .95 : .88, duration: 0});
+    flow.current.fitView({nodes: [{id: activeKey}], padding: .12, maxZoom: narrow ? .95 : .88, duration: 0});
   }, [loading, nodesInitialized, activeKey, nodes]);
 
   const chooseSession = useCallback(id => {
@@ -211,11 +228,11 @@ export default function NativeWorkspace({host}) {
   const foldNode = useCallback(key => {
     setFolded(previous => {const next = {...previous, [key]: !previous[key]}; save({view: {folded: next}}); return next;});
   }, [save]);
-  const focusNode = useCallback(key => {
+  const focusNode = useCallback((key, zoom) => {
     const instance = flow.current;
     if (!instance?.getNode(key)) return;
     const bounds = instance.getNodesBounds([key]);
-    return instance.setCenter(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2, {zoom: instance.getZoom(), duration: 250});
+    return instance.setCenter(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2, {zoom: zoom ?? instance.getZoom(), duration: 250});
   }, []);
   const openNative = useCallback(id => {try {Promise.resolve(host.nativeChat(id)).catch(fail);} catch (failure) {fail(failure);}}, [host, fail]);
 
@@ -223,7 +240,15 @@ export default function NativeWorkspace({host}) {
     const hidden = new Set();
     for (const [key, isFolded] of Object.entries(folded)) if (isFolded) for (const child of descendants(key, graph.edges)) hidden.add(child);
     const path = new Set(graph.paths[selected] || []);
-    setNodes(graph.nodes.map(node => ({...node, hidden: hidden.has(node.id), data: {...node.data, active: node.id === activeKey, onPath: path.has(node.id), folded: !!folded[node.id], readOnly, select: chooseNode, read: (key, id) => chooseNode(key, id, true), branch: branchNode, quote: quoteNode, fold: foldNode, focus: focusNode, native: openNative}})));
+    setNodes(previous => {
+      const old = new Map(previous.map(node => [node.id, node]));
+      return graph.nodes.map(node => {
+        const data = {...node.data, active: node.id === activeKey, onPath: path.has(node.id), folded: !!folded[node.id], readOnly, select: chooseNode, read: chooseNode, branch: branchNode, quote: quoteNode, fold: foldNode, focus: focusNode, native: openNative};
+        const prior = old.get(node.id), isHidden = hidden.has(node.id);
+        if (prior && !!prior.hidden === isHidden && prior.position.x === node.position.x && prior.position.y === node.position.y && Object.keys(data).every(key => prior.data[key] === data[key])) return prior;
+        return {...node, hidden: isHidden, data};
+      });
+    });
   }, [graph, selected, activeKey, folded, readOnly, chooseNode, branchNode, quoteNode, foldNode, focusNode, openNative, setNodes]);
 
   const edges = useMemo(() => {
@@ -233,7 +258,7 @@ export default function NativeWorkspace({host}) {
   }, [graph.edges, graph.paths, selected, nodes]);
 
   async function sendQuestion() {
-    if (busy || state.current.readOnly) return;
+    if (busy || state.current.readOnly || modelUnavailable) return;
     const current = state.current;
     const destination = questionTarget(current.graph, current.activeKey, current.selected, current.snapshot.histories);
     const content = newTopic ? current.rootDraft : current.draft.text;
@@ -241,13 +266,14 @@ export default function NativeWorkspace({host}) {
     const branch = !!destination?.historical || current.draft.branch || !!current.draft.quote;
     setBusy(true); setError('');
     try {
-      const result = await call('send_question', newTopic ? {question: content, ...(selectedThread?.cwd ? {cwd: selectedThread.cwd} : {})} : {id: destination?.threadId || current.selected, question: content, branch, ...(branch ? {turnId: destination?.turnId, ...(current.draft.quote ? {quote: current.draft.quote} : {})} : {})});
+      const modelOptions = model ? {model} : {};
+      const result = await call('send_question', newTopic ? {question: content, ...modelOptions, ...(selectedThread?.cwd ? {cwd: selectedThread.cwd} : {})} : {id: destination?.threadId || current.selected, question: content, ...modelOptions, branch, ...(branch ? {turnId: destination?.turnId, ...(current.draft.quote ? {quote: current.draft.quote} : {})} : {})});
       if (!mounted.current) return;
       if (!result.accepted) {setError(result.warning || '本次问题未被接受，草稿已保留。'); return;}
       if (newTopic) {setRootDraft(''); save({view: {rootDraft: ''}});} else editDraft(current.draftKey, {text: '', quote: '', branch: false});
       setNewTopic(false); setActive(null);
       const id = result.thread?.id || current.selected;
-      setSelected(id); host.setActiveThread?.(id); await refresh(id);
+      setSelected(id); host.setActiveThread?.(id); await refresh(id, true);
       if (result.warning) setError(result.warning);
     } catch (failure) {fail(failure);} finally {if (mounted.current) setBusy(false);}
   }
@@ -267,8 +293,9 @@ export default function NativeWorkspace({host}) {
     const id = selected;
     setLoading(true);
     try {
-      const page = await call('read_session', {id, cursor: selectedHistory.nextCursor});
-      if (mounted.current) setSnapshot(previous => ({...previous, histories: {...previous.histories, [id]: mergeHistory(previous.histories[id], page, true)}}));
+      const sequence = request.current;
+      const page = await previewCall('read_session', {id, cursor: selectedHistory.nextCursor});
+      if (mounted.current && state.current.selected === id && sequence === request.current) setSnapshot(previous => ({...previous, histories: mergePreviewHistories(previous.histories, {...previous.histories, [id]: page}, previous.layout.branches, {olderId: id})}));
     } catch (failure) {fail(failure);} finally {if (mounted.current) setLoading(false);}
   }
   async function moreThreads() {
@@ -285,7 +312,7 @@ export default function NativeWorkspace({host}) {
   return <div ref={workspaceElement} className={'synapse-workspace ' + (sidebar ? '' : 'sidebar-closed ') + (detail || newTopic ? 'detail-open ' : '')} data-testid="synapse-workspace">
     {sidebar && <nav className="sessions" aria-label="本机会话"><div className="sidebar-heading"><span><Network size={17}/>会话地图</span><button className="icon-button" onClick={toggleSidebar} title="收起会话列表" aria-label="收起会话列表"><PanelLeftClose size={16}/></button></div><label className="session-search"><Search size={14}/><input aria-label="搜索会话或目录" placeholder="搜索会话或目录" value={query} onChange={event => setQuery(event.target.value)}/>{query && <button className="icon-button" aria-label="清除搜索" onClick={() => setQuery('')}><X size={13}/></button>}</label><button className="new-topic" disabled={readOnly} onClick={() => {setNewTopic(true); setDetail(true);}}><Plus size={15}/>新讨论</button>
       <div className="session-groups">{groups.map(group => <section className="session-group" key={group.key}><button className="group-heading" title={group.key} onClick={() => setClosedGroups(previous => ({...previous, [group.key]: !previous[group.key]}))}>{closedGroups[group.key] ? <ChevronRight size={12}/> : <ChevronDown size={12}/>}<Folder size={13}/><span>{group.label}</span><small>{group.threads.length}</small></button>{!closedGroups[group.key] && group.threads.map(thread => <button key={thread.id} className={'session ' + (selected === thread.id && !newTopic ? 'current' : '')} title={titleOf(thread)} onClick={() => chooseSession(thread.id)}><span className="session-symbol">{thread.forkedFromId || snapshot.layout.branches?.[thread.id] ? <GitBranch size={13}/> : <span className="session-dot"/>}</span><span>{titleOf(thread)}</span>{selected === thread.id && !newTopic && <span className="selected-indicator"/>}</button>)}</section>)}{!groups.length && !loading && <p className="empty-list">{query ? '没有匹配的会话' : '暂无本机会话'}</p>}{snapshot.nextCursor && <button className="more-sessions" disabled={loading} onClick={moreThreads}>加载更多会话</button>}</div><div className="sidebar-foot"><i className={context.testing ? 'test-dot' : 'connection-dot'}/>{context.testing ? '模拟数据' : '本机 Codex'}<span>{readOnly ? '只读' : '已连接'}</span></div></nav>}
-    <main className="map-main"><header className="map-toolbar"><div className="map-title">{!sidebar && <button className="icon-button" aria-label="展开会话列表" onClick={toggleSidebar}><PanelLeftOpen size={17}/></button>}<div><strong title={title}>{title}</strong><span>{recordPath.length ? `${recordPath.length} 轮问答` : '选择会话，查看思路如何展开'}{snapshot.familyTruncated ? ' · 部分关联会话尚未加载' : ''}</span></div></div><div className="toolbar-actions"><button className="icon-button" title="同步会话" aria-label="同步会话" disabled={loading} onClick={() => refresh(selected)}><RefreshCw size={15} className={loading ? 'spin' : ''}/></button><button className="icon-button" title="适应画布" aria-label="适应画布" onClick={() => flow.current?.fitView({padding: .14, maxZoom: .9, duration: 250})}><Focus size={16}/></button><button className="icon-button" title="定位当前问答（保持缩放）" aria-label="定位当前问答" disabled={!currentRecord} onClick={() => focusNode(activeKey)}><LocateFixed size={16}/></button><button className={'detail-toggle ' + (detail ? 'active' : '')} disabled={!currentRecord && !newTopic} onClick={toggleDetail}><FileText size={14}/>详情</button><button className="native-link" disabled={!selected} onClick={() => openNative(selected)}>原生聊天<ArrowUpRight size={14}/></button></div></header>
+    <main className="map-main"><header className="map-toolbar"><div className="map-title">{!sidebar && <button className="icon-button" aria-label="展开会话列表" onClick={toggleSidebar}><PanelLeftOpen size={17}/></button>}<div><strong title={title}>{title}</strong><span>{recordPath.length ? `${recordPath.length} 轮问答` : '选择会话，查看思路如何展开'}{snapshot.familyTruncated ? ' · 部分关联会话尚未加载' : ''}</span></div></div><div className="toolbar-actions"><button className="icon-button" title="同步会话" aria-label="同步会话" disabled={loading} onClick={() => refresh(selected, true)}><RefreshCw size={15} className={loading ? 'spin' : ''}/></button><button className="icon-button" title="适应画布" aria-label="适应画布" onClick={() => flow.current?.fitView({padding: .14, maxZoom: .9, duration: 250})}><Focus size={16}/></button><button className="icon-button" title="定位当前问答（保持缩放）" aria-label="定位当前问答" disabled={!currentRecord} onClick={() => focusNode(activeKey)}><LocateFixed size={16}/></button><button title="恢复阅读比例并定位当前问答" aria-label="恢复阅读视图" disabled={!currentRecord} onClick={() => focusNode(activeKey, .85)}><Search size={14}/>阅读视图</button><button className={'detail-toggle ' + (detail ? 'active' : '')} disabled={!currentRecord && !newTopic} onClick={toggleDetail}><FileText size={14}/>详情</button><button className="native-link" disabled={!selected} onClick={() => openNative(selected)}>原生聊天<ArrowUpRight size={14}/></button></div></header>
       {error && <div className="error-banner" role="alert"><span>{error}</span><button className="icon-button" aria-label="关闭错误提示" onClick={() => setError('')}><X size={14}/></button></div>}
       {selectedHistory?.warning && <div className="status-warning">{selectedHistory.warning}<button onClick={() => openNative(selected)}>查看原生聊天<ArrowUpRight size={12}/></button></div>}
       <div className="canvas-view" id={canvasId}><ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onInit={instance => {flow.current = instance; if (initialViewport.current) instance.setViewport(initialViewport.current);}} defaultViewport={{x: 52, y: 40, zoom: .82}} minZoom={.12} maxZoom={1.6} nodesConnectable={false} nodesDraggable={false} panOnScroll={false} zoomOnScroll={true} deleteKeyCode={null} selectionOnDrag={false} onlyRenderVisibleElements proOptions={{hideAttribution: true}} onMoveEnd={(_, viewport) => save({view: {viewport}})}>
@@ -295,9 +322,9 @@ export default function NativeWorkspace({host}) {
       {!!graph.nodes.length && <div className="canvas-note"><span className="path-legend"/>当前会话路径<span className="branch-legend"/>原生分支</div>}{approvals.length > 0 && !detail && <button className="approval-badge" onClick={() => setDetail(true)}>{approvals.length} 项等待处理</button>}</div>
       <footer className="workspace-foot"><span>{readOnly ? '只读模式' : <><Check size={12}/>{saved ? '布局与草稿已保存' : '正在保存…'}</>}</span><span>拖动边缘滚动条平移 · 滚轮缩放 · 分支自动排列</span></footer>
     </main>
-    {(detail || newTopic) && <aside className="detail-pane" aria-label="问答详情"><header className="detail-heading"><div><span>{newTopic ? '新讨论' : `问答 ${activeIndex >= 0 ? activeIndex + 1 : (currentRecord?.index || 0) + 1}`}</span><small>{newTopic ? selectedThread?.cwd || '当前工作目录' : titleOf(selectedThread)}</small></div><button className="icon-button" aria-label="关闭详情" onClick={() => {setNewTopic(false); setDetail(false); save({view: {detail: false}});}}><X size={16}/></button></header><div className="detail-scroll"><ApprovalPanel approvals={approvals} disabled={readOnly} busy={busy} respond={respond} native={openNative}/>{selectedHistory?.nextCursor && !newTopic && <button className="load-older" disabled={loading} onClick={olderTurns}>加载更早的问答</button>}{newTopic ? <div className="new-topic-intro"><GitBranch size={24}/><h2>从新的问题开始</h2><p>输入一个问题，创建本机 Codex 会话。后续可从任意一轮继续发散。</p></div> : currentRecord ? <TurnBody turn={currentRecord.turn} onQuote={quote => quoteNode(activeKey, quote)}/> : <p className="reader-empty">选择地图上的问答节点</p>}</div>
+    {(detail || newTopic) && <aside className="detail-pane" aria-label="问答详情"><header className="detail-heading"><div><span>{newTopic ? '新讨论' : `问答 ${activeIndex >= 0 ? activeIndex + 1 : (currentRecord?.index || 0) + 1}`}</span><small>{newTopic ? selectedThread?.cwd || '当前工作目录' : titleOf(selectedThread)}</small></div><button className="icon-button" aria-label="关闭详情" onClick={() => {setNewTopic(false); setDetail(false); save({view: {detail: false}});}}><X size={16}/></button></header><div className="detail-scroll"><ApprovalPanel approvals={approvals} disabled={readOnly} busy={busy} respond={respond} native={openNative}/>{selectedHistory?.windowed && !newTopic && <button className="load-older" disabled={loading} onClick={() => refresh(selected, true)}>返回最近问答</button>}{selectedHistory?.nextCursor && !newTopic && <button className="load-older" disabled={loading} onClick={olderTurns}>加载更早的问答</button>}{newTopic ? <div className="new-topic-intro"><GitBranch size={24}/><h2>从新的问题开始</h2><p>输入一个问题，创建本机 Codex 会话。后续可从任意一轮继续发散。</p></div> : currentRecord ? <TurnDetail {...turnDetail} onQuote={quote => quoteNode(activeKey, quote)}/> : <p className="reader-empty">选择地图上的问答节点</p>}</div>
       {!newTopic && currentRecord && <div className="turn-pagination"><button aria-label="上一轮问答" disabled={activeIndex <= 0} onClick={() => {const key = recordPath[activeIndex - 1]; chooseNode(key, selected); focusNode(key);}}><ChevronLeft size={14}/>上一轮</button><span>{activeIndex + 1} / {recordPath.length}</span><button aria-label="下一轮问答" disabled={activeIndex < 0 || activeIndex >= recordPath.length - 1} onClick={() => {const key = recordPath[activeIndex + 1]; chooseNode(key, selected); focusNode(key);}}>下一轮<ChevronRight size={14}/></button></div>}
-      {(newTopic || currentRecord) && <div className="detail-composer"><Composer value={newTopic ? rootDraft : draft.text} onChange={text => {if (newTopic) {setRootDraft(text); save({view: {rootDraft: text}});} else editDraft(draftKey, {text});}} disabled={readOnly} busy={busy} generating={generating} historical={!newTopic && target?.historical} branch={!newTopic && draft.branch} onBranch={newTopic ? undefined : () => editDraft(draftKey, {branch: !draft.branch})} quote={newTopic ? '' : draft.quote} onQuoteChange={quote => editDraft(draftKey, {quote})} onClearQuote={() => editDraft(draftKey, {quote: ''})} onSend={sendQuestion} onStop={stopGeneration} label={newTopic ? '输入新讨论的问题…' : draft.branch ? '从这一轮探索另一个方向…' : '继续当前会话…'}/></div>}
+      {(newTopic || currentRecord) && <div className="detail-composer"><ModelPicker catalog={catalog} value={model} onChange={value => {setModel(value); save({view: {model: value}});}} disabled={readOnly || busy || generating} newTopic={newTopic}/><Composer value={newTopic ? rootDraft : draft.text} onChange={text => {if (newTopic) {setRootDraft(text); save({view: {rootDraft: text}});} else editDraft(draftKey, {text});}} disabled={readOnly} sendDisabled={modelUnavailable} busy={busy} generating={generating} historical={!newTopic && target?.historical} branch={!newTopic && draft.branch} onBranch={newTopic ? undefined : () => editDraft(draftKey, {branch: !draft.branch})} quote={newTopic ? '' : draft.quote} onQuoteChange={quote => editDraft(draftKey, {quote})} onClearQuote={() => editDraft(draftKey, {quote: ''})} onSend={sendQuestion} onStop={stopGeneration} label={newTopic ? '输入新讨论的问题…' : draft.branch ? '从这一轮探索另一个方向…' : '继续当前会话…'}/></div>}
     </aside>}
   </div>;
 }
