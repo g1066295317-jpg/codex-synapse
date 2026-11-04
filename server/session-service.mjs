@@ -1,5 +1,7 @@
 import {fromMarkdown} from 'mdast-util-from-markdown';
 import {toString} from 'mdast-util-to-string';
+import {previewHistory} from '../shared/turn-preview.mjs';
+import {readTurn} from './turn-reader.mjs';
 const normalize=value=>value.replace(/\s+/g,' ').trim();
 const threadId = value => {
   if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(value)) throw new Error('无效会话 ID');
@@ -10,8 +12,25 @@ const text = (value,max=1000) => {
   return value.trim();
 };
 export class SessionService {
-  ancestry=new Map();forking=new Set();
+  ancestry=new Map();forking=new Set();modelCatalog=null;
   constructor(rpc,store) {this.rpc=rpc;this.store=store;}
+  async models(refresh=false) {
+    if(!refresh&&this.modelCatalog&&Date.now()-this.modelCatalog.at<300000)return this.modelCatalog.value;
+    const data=[],seen=new Set();let cursor;
+    do {
+      const page=await this.rpc.call('model/list',{limit:100,includeHidden:false,...(cursor?{cursor}:{})});
+      for(const model of page.data)if(!model.hidden)data.push({id:model.id,model:model.model||model.id,displayName:model.displayName||model.model||model.id,description:model.description||'',isDefault:!!model.isDefault});
+      cursor=page.nextCursor;if(cursor&&seen.has(cursor))throw new Error('模型列表分页游标重复');if(cursor)seen.add(cursor);
+    }while(cursor);
+    const value={data};this.modelCatalog={at:Date.now(),value};return value;
+  }
+  async modelOptions(model) {
+    if(model===undefined)return {};
+    const wanted=text(model,200),catalog=await this.models();
+    const selected=catalog.data.find(entry=>entry.model===wanted);
+    if(!selected)throw new Error('所选模型当前不可用，请刷新模型列表后重新选择');
+    return {model:selected.model};
+  }
   async list({cursor,archived=false,cwd}={}) {
     if(typeof archived!=='boolean'||cursor!==undefined&&(typeof cursor!=='string'||cursor.length>4096)||cwd!==undefined&&(typeof cwd!=='string'||!cwd.trim()||cwd.length>4096))throw new Error('无效会话列表参数');
     const [page,groups]=await Promise.all([this.rpc.call('thread/list',{limit:60,sortKey:'updated_at',modelProviders:[],sourceKinds:['cli','vscode','appServer','exec','unknown'],useStateDbOnly:true,archived,...(cursor?{cursor}:{}),...(cwd?{cwd}:{})}),this.sections()]);
@@ -26,12 +45,12 @@ export class SessionService {
     page.data=page.data.map(t=>({...t,forkedFromId:t.forkedFromId||this.ancestry.get(t.id)||null,isPinned:t.section?.id===pinned?.id && !!pinned}));
     return page;
   }
-  async read(id,cursor) {
+  async read(id,cursor,view='full') {
     threadId(id);
     if(cursor!==undefined&&(typeof cursor!=='string'||cursor.length>4096))throw new Error('无效历史分页游标');
     const {thread} = await this.rpc.call('thread/read',{threadId:id,includeTurns:false});
     let page,legacy=false;
-    try {page=await this.rpc.call('thread/turns/list',{threadId:id,limit:12,itemsView:'full',sortDirection:'desc',...(cursor?{cursor}:{})});}
+    try {page=await this.rpc.call('thread/turns/list',{threadId:id,limit:12,itemsView:view==='preview'?'summary':'full',sortDirection:'desc',...(cursor?{cursor}:{})});}
     catch(error) {
       if (!/unsupported|legacy|unknown variant/i.test(error.message)) throw error;
       const result = await this.rpc.call('thread/read',{threadId:id,includeTurns:true});
@@ -39,8 +58,11 @@ export class SessionService {
       page={data:result.thread.turns || [],nextCursor:null};legacy=true;
     }
     const groups=await this.sections();const pinned=groups.data.find(s=>s.name==='Pinned');
-    return {thread:{...thread,isPinned:!!pinned&&thread.section?.id===pinned.id},turns:legacy?[...page.data]:[...page.data].reverse(),nextCursor:page.nextCursor};
+    const turns=legacy?[...page.data]:[...page.data].reverse();
+    const result={thread:{...thread,isPinned:!!pinned&&thread.section?.id===pinned.id},turns,nextCursor:page.nextCursor,...(!cursor?{latestTurnId:turns.at(-1)?.id}:{} )};
+    return view==='preview'?previewHistory(result):result;
   }
+  async readTurn(id,turnId) {return readTurn(this.rpc,threadId(id),threadId(turnId));}
   async rename(id,name) {return this.rpc.call('thread/name/set',{threadId:threadId(id),name:text(name,200)});}
   async move(id,sectionId) {
     threadId(id);
@@ -54,11 +76,12 @@ export class SessionService {
   async sections() {return this.rpc.call('threadSection/list',{});}
   async createSection(name) {return this.rpc.call('threadSection/create',{name:text(name,80)});}
   async archive(id,restore=false) {if(typeof restore!=='boolean')throw new Error('无效归档参数');return this.rpc.call(restore?'thread/unarchive':'thread/archive',{threadId:threadId(id)});}
-  async fork({id,turnId,quote='',question='',name,send=false}) {
+  async fork({id,turnId,quote='',question='',name,send=false,model}) {
     threadId(id);
     if(turnId!==undefined)threadId(turnId);
     if(typeof quote!=='string'||typeof question!=='string'||typeof send!=='boolean'||quote.length>16000 || question.length>16000) throw new Error('引用或追问格式不正确或过长');
     if(name!==undefined)text(name,200);
+    const modelOptions=await this.modelOptions(model);
     if(send && !question.trim()) throw new Error('请输入追问内容');
     if(this.forking.has(id))throw new Error('正在创建分支，请稍候');
     this.forking.add(id);
@@ -85,7 +108,7 @@ export class SessionService {
     if(send) {
       const prompt = quote ? `关于这段回答：\n\n<quoted-answer>\n${quote}\n</quoted-answer>\n\n我的追问：\n${question}` : question;
       try {
-        const response=await this.rpc.call('turn/start',{threadId:thread.id,input:[{type:'text',text:prompt}]});turn=response.turn;accepted=true;
+        const response=await this.rpc.call('turn/start',{threadId:thread.id,...modelOptions,input:[{type:'text',text:prompt}]});turn=response.turn;accepted=true;
         try{await this.store.update({branches:{[thread.id]:{...branch,sent:true}}});}catch(error){warning=`问题已发送，画布状态保存失败：${error.message}`;}
       }
       catch(error){accepted=false;warning=`分支已创建，发送未能确认；请先查看该分支状态后重试。${error.message}`;}

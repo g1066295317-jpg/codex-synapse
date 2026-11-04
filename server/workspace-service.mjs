@@ -1,3 +1,4 @@
+import {previewHistory} from '../shared/turn-preview.mjs';
 const validId=value=>typeof value==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(value);
 const busyTurn=turn=>turn?.status==='inProgress'||turn?.status==='in_progress';
 const busyThread=thread=>thread?.status?.type==='active'||thread?.status==='active';
@@ -34,56 +35,63 @@ export class WorkspaceService {
       let item=turn.items.find(x=>x.id===p.itemId);if(!item){item={type:'agentMessage',id:p.itemId,text:''};turn.items.push(item);}item.text+=p.delta;
     }
   }
-  async read(id,cursor){
-    const result=await this.service.read(id,cursor),live=this.live.get(id);
+  async read(id,cursor,view='full'){
+    const result=await this.service.read(id,cursor,view),live=this.live.get(id);
     if(!cursor&&live){
       const i=result.turns.findIndex(t=>t.id===live.id),persisted=result.turns[i];
       if(busyTurn(live)){if(i<0)result.turns.push(live);else if(busyTurn(persisted))result.turns[i]=live;else this.live.delete(id);}
       else if(i<0)result.turns.push(live);else this.live.delete(id);
     }
-    return {...result,warning:this.errors.get(id)||null,approvals:this.listApprovals(id)};
+    const history={...result,...(!cursor?{latestTurnId:result.turns.at(-1)?.id}:{}),warning:this.errors.get(id)||null,approvals:this.listApprovals(id)};
+    return view==='preview'?previewHistory(history):history;
   }
-  async snapshot(id){
+  async readTurn(id,turnId){
+    const live=this.live.get(id);
+    if(live?.id===turnId&&busyTurn(live))return{turn:{...live,items:(live.items||[]).filter(item=>item.type!=='reasoning')},threadId:id};
+    return{turn:await this.service.readTurn(id,turnId),threadId:id};
+  }
+  async snapshot(id,view='full'){
     await this.store.load();
     const page=await this.service.list(),threads=[...page.data];
     let selectedId=id??null,selected=null;
     if(id!==undefined){
       // An explicitly requested chat must surface its own error, never silently open another.
-      selected=await this.read(id);
+      selected=await this.read(id,undefined,view);
     }else{
       const savedId=this.store.data.view?.selectedId;
       if(validId(savedId)){
         // A saved selection may be older than the first thread-list page.
-        try{selected=await this.read(savedId);selectedId=savedId;}catch{/* Deleted/unavailable saved chats fall back to the current list. */}
+        try{selected=await this.read(savedId,undefined,view);selectedId=savedId;}catch{/* Deleted/unavailable saved chats fall back to the current list. */}
       }
-      if(!selected&&threads.length){selectedId=threads[0].id;selected=await this.read(selectedId);}
+      if(!selected&&threads.length){selectedId=threads[0].id;selected=await this.read(selectedId,undefined,view);}
     }
     if(selected&&!threads.some(t=>t.id===selectedId))threads.unshift(selected.thread);
     const family=new Set(selectedId?[selectedId]:[]);let changed=true;
     while(changed){changed=false;for(const t of threads){const parent=t.forkedFromId||this.store.data.branches?.[t.id]?.parentId;if(parent&&(family.has(t.id)||family.has(parent))){if(!family.has(t.id)||!family.has(parent))changed=true;family.add(t.id);family.add(parent);}}}
-    const histories={};await Promise.all([...family].slice(0,24).map(async key=>{try{histories[key]=key===selectedId?selected:await this.read(key);}catch(e){histories[key]={error:e.message};}}));
-    return {threads,nextCursor:page.nextCursor,histories,layout:this.store.data,selectedId,familyTruncated:family.size>24};
+    const histories={};await Promise.all([...family].slice(0,24).map(async key=>{try{histories[key]=key===selectedId?selected:await this.read(key,undefined,view);}catch(e){histories[key]={error:e.message};}}));
+    return {threads,nextCursor:page.nextCursor,histories,layout:this.store.data,selectedId,familyTruncated:family.size>24,...(view==='preview'?{previewProtocol:1}:{})};
   }
   remember(result){if(result.turn&&result.thread?.id){const id=result.thread.id;const previous=this.live.get(id);if(!previous||previous.id!==result.turn.id)this.live.set(id,{...result.turn,status:result.turn.status??'inProgress',items:result.turn.items??[]});}return result;}
   async fork(args){
     const key=args.id;if(this.sending.has(key))throw new Error('正在提交，请稍候');this.sending.add(key);
     try{return this.remember(await this.service.fork(args));}finally{this.sending.delete(key);}
   }
-  async send({id,question,turnId,quote='',branch=false,cwd}){
+  async send({id,question,turnId,quote='',branch=false,cwd,model}){
     if(typeof question!=='string'||!question.trim()||question.length>16000)throw new Error('请输入 1–16000 字的问题');
     if(id!==undefined&&!validId(id)||turnId!==undefined&&!validId(turnId)||typeof branch!=='boolean'||typeof quote!=='string'||quote.length>16000)throw new Error('追问参数无效');
     if(!branch&&(turnId||quote))throw new Error('历史轮次追问需要创建分支');
     const key=id||'new';if(this.sending.has(key))throw new Error('正在提交，请稍候');this.sending.add(key);
     try{
-      if(branch){if(!id||!turnId)throw new Error('请选择分支的起点');return this.remember(await this.service.fork({id,turnId,quote,question,send:true}));}
+      const modelOptions=model===undefined?{}:await this.service.modelOptions(model);
+      if(branch){if(!id||!turnId)throw new Error('请选择分支的起点');return this.remember(await this.service.fork({id,turnId,quote,question,send:true,...modelOptions}));}
       if(id){
         const history=await this.read(id);if(history.turns.some(busyTurn)||busyThread(history.thread)||busyTurn(this.live.get(id)))throw new Error('本轮仍在生成，请等待或停止后再发送');
         const resumed=await this.rpc.call('thread/resume',{threadId:id,excludeTurns:true});if(busyThread(resumed.thread))throw new Error('本轮仍在生成，请等待或停止后再发送');
       }else{
-        const created=await this.rpc.call('thread/start',{...(cwd?{cwd}:{}),threadSource:'synapse'});id=created.thread.id;
+        const created=await this.rpc.call('thread/start',{...(cwd?{cwd}:{}),...modelOptions,threadSource:'synapse'});id=created.thread.id;
         try{await this.service.rename(id,question.trim().slice(0,42));}catch{/* A title failure must not discard a newly created input. */}
       }
-      this.errors.delete(id);const {turn}=await this.rpc.call('turn/start',{threadId:id,input:[{type:'text',text:question.trim()}]});
+      this.errors.delete(id);const {turn}=await this.rpc.call('turn/start',{threadId:id,...modelOptions,input:[{type:'text',text:question.trim()}]});
       return this.remember({thread:{id},turn,accepted:true});
     }finally{this.sending.delete(key);}
   }

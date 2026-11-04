@@ -11,13 +11,16 @@ import {releaseForNative} from './native-handoff.mjs';
 const id=z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/);
 const cursor=z.string().min(1).max(4096).optional();
 const text=max=>z.string().trim().min(1).max(max);
+const view=z.enum(['full','preview']).optional();
 const layouts=z.object({nodes:z.record(z.string().max(300),z.object({x:z.number().finite(),y:z.number().finite()}).strict()).optional(),view:z.record(z.string().max(300),z.unknown()).optional()}).strict();
 const schemas={
   open_session_map:z.object({id:id.optional()}).strict(),
-  workspace_snapshot:z.object({id:id.optional()}).strict(),
-  read_session:z.object({id,cursor}).strict(),
+  workspace_snapshot:z.object({id:id.optional(),view}).strict(),
+  read_session:z.object({id,cursor,view}).strict(),
+  read_turn:z.object({id,turnId:id}).strict(),
   list_sessions:z.object({cursor,archived:z.boolean().optional(),cwd:text(4096).optional()}).strict(),
-  send_question:z.object({id:id.optional(),question:text(16000),turnId:id.optional(),quote:z.string().max(16000).optional(),branch:z.boolean().optional(),cwd:text(4096).optional()}).strict(),
+  send_question:z.object({id:id.optional(),question:text(16000),turnId:id.optional(),quote:z.string().max(16000).optional(),branch:z.boolean().optional(),cwd:text(4096).optional(),model:text(200).optional()}).strict(),
+  list_models:z.object({refresh:z.boolean().optional()}).strict(),
   stop_turn:z.object({id,turnId:id}).strict(),
   save_layout:layouts,
   fork_session:z.object({id,turnId:id.optional(),quote:z.string().max(16000).optional(),question:z.string().max(16000).optional(),name:text(200).optional(),send:z.boolean().default(false)}).strict(),
@@ -68,8 +71,10 @@ export class NativeBackend extends EventEmitter {
     const a=parsed.data;let result;
     switch(method){
       case 'open_session_map':result={selectedId:a.id??null,version:'0.3.0'};break;
-      case 'workspace_snapshot':result=await this.workspace.snapshot(a.id);break;
-      case 'read_session':result=await this.workspace.read(a.id,a.cursor);break;
+      case 'workspace_snapshot':result=await this.workspace.snapshot(a.id,a.view);break;
+      case 'read_session':result=await this.workspace.read(a.id,a.cursor,a.view);break;
+      case 'read_turn':result=await this.workspace.readTurn(a.id,a.turnId);break;
+      case 'list_models':result=await this.service.models(a.refresh);break;
       case 'list_sessions':result=await this.service.list(a);break;
       case 'send_question':result=await this.workspace.send(a);break;
       case 'stop_turn':result=await this.workspace.stop(a.id,a.turnId);break;
