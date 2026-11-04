@@ -1,4 +1,5 @@
 import {EventEmitter} from 'node:events';
+import {previewHistory} from '../shared/turn-preview.mjs';
 
 // Synthetic fixtures only. This backend never imports or starts Codex RPC.
 export class DemoBackend extends EventEmitter {
@@ -22,10 +23,12 @@ export class DemoBackend extends EventEmitter {
         const selectedId=this.histories[args.id]?args.id:this.histories[this.layout.view.selectedId]?this.layout.view.selectedId:'demo-main-0001';
         const family=new Set([selectedId]);let changed=true;
         while(changed){changed=false;for(const [id,h]of Object.entries(this.histories)){const parent=h.thread.forkedFromId;if(parent&&(family.has(id)||family.has(parent))){if(!family.has(id)||!family.has(parent))changed=true;family.add(id);family.add(parent);}}}
-        return {threads:threads(),histories:Object.fromEntries([...family].filter(id=>this.histories[id]).map(id=>[id,structuredClone(this.histories[id])])),layout:structuredClone(this.layout),selectedId,nextCursor:null};
+        return {threads:threads(),histories:Object.fromEntries([...family].filter(id=>this.histories[id]).map(id=>[id,args.view==='preview'?previewHistory(this.histories[id]):structuredClone(this.histories[id])])),layout:structuredClone(this.layout),selectedId,nextCursor:null};
       }
-      case 'read_session':if(!this.histories[args.id])throw new Error('演示会话不存在');return structuredClone(this.histories[args.id]);
+      case 'read_session':if(!this.histories[args.id])throw new Error('演示会话不存在');return args.view==='preview'?previewHistory(this.histories[args.id]):structuredClone(this.histories[args.id]);
+      case 'read_turn':{const turn=this.histories[args.id]?.turns.find(turn=>turn.id===args.turnId);if(!turn)throw new Error('演示问答不存在');return{threadId:args.id,turn:structuredClone(turn)};}
       case 'list_sessions':return {data:threads(),nextCursor:null};
+      case 'list_models':return{data:[{id:'demo-model',model:'demo-model',displayName:'合成演示模型',isDefault:true}]};
       case 'save_canvas':case 'save_layout':this.layout={...this.layout,nodes:{...this.layout.nodes,...args.nodes},view:{...this.layout.view,...args.view}};return structuredClone(this.layout);
       case 'list_approvals':return {approvals:[]};
       case 'list_sections':return {sections:[]};

@@ -25,7 +25,7 @@ const signalExisting=()=>new Promise(resolveSignal=>{const socket=connect(pipe);
 if(await signalExisting())process.exit(0);
 let browser,app,backend,watcher,shuttingDown=false;
 const clients=new Map(),binding='__synapse_'+randomBytes(12).toString('hex'),channel=randomBytes(24).toString('hex');
-const methods=new Set(['workspace_snapshot','read_session','list_sessions','send_question','stop_generation','stop_turn','save_canvas','save_layout','fork_session','rename_session','move_session','archive_session','list_sections','create_section','list_approvals','respond_approval']);
+const methods=new Set(['workspace_snapshot','read_session','read_turn','list_models','list_sessions','send_question','stop_generation','stop_turn','save_canvas','save_layout','fork_session','rename_session','move_session','archive_session','list_sections','create_section','list_approvals','respond_approval']);
 const mutations=new Set(['send_question','stop_generation','stop_turn','fork_session','rename_session','move_session','archive_session','create_section','respond_approval']);
 const deliver=(client,contextId,payload)=>client.evaluate(`window.__codexSynapse?.deliver(${JSON.stringify({channel,...payload})})`,contextId);
 const broadcast=event=>{for(const entry of clients.values())entry.client.evaluate(`window.__codexSynapse?.deliver(${JSON.stringify({channel,event})})`).catch(()=>{});};
